@@ -1,7 +1,7 @@
 // 截图 / 缩略图 / 分享卡片（带游戏名、网址、二维码）
 import * as THREE from 'three';
 import qrcode from '../vendor/qrcode.mjs';
-import { VoxelModel } from './voxel.js';
+import { VoxelModel, computeClues, makeVoxelMaterial, getBlockGeometry } from './voxel.js';
 import { CONFIG } from './config.js';
 import { siteUrl } from './codec.js';
 
@@ -34,6 +34,43 @@ export function renderModel(data, size = 512, { t = 0.7, yaw = -0.55, pitch = 0.
   c.width = c.height = size;
   c.getContext('2d').drawImage(r.domElement, 0, 0);
   m.dispose();
+  return c;
+}
+
+// 渲染“还没解开”的谜题方块（带数字），分享时不剧透
+export function renderPuzzle(data, size = 900, { yaw = -0.62, pitch = 0.62 } = {}) {
+  const { r, scene, cam } = getSnap();
+  r.setSize(size, size, false);
+  const { w, h, d, voxels } = data;
+  const N = w * h * d;
+  const set = new Set(voxels.map(v => v[0] + ',' + v[1] + ',' + v[2]));
+  const clues = computeClues(w, h, d, (x, y, z) => set.has(x + ',' + y + ',' + z));
+  const geo = getBlockGeometry().clone();
+  geo.setAttribute('aClue', new THREE.InstancedBufferAttribute(clues, 3));
+  const mat = makeVoxelMaterial(1);
+  const mesh = new THREE.InstancedMesh(geo, mat, N);
+  const m = new THREE.Matrix4(), col = new THREE.Color('#FFF4E3');
+  for (let z = 0; z < d; z++) for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = x + w * (y + h * z);
+    m.makeTranslation(x - (w - 1) / 2, y - (h - 1) / 2, z - (d - 1) / 2);
+    mesh.setMatrixAt(i, m);
+    mesh.setColorAt(i, col);
+  }
+  const grp = new THREE.Group();
+  grp.add(mesh);
+  grp.rotation.y = yaw;
+  scene.add(grp);
+  const R = Math.sqrt(w * w + h * h + d * d) / 2 + 0.2;
+  const dist = R / Math.sin(THREE.MathUtils.degToRad(cam.fov / 2));
+  cam.position.set(0, pitch, 1).normalize().multiplyScalar(dist);
+  cam.lookAt(0, 0, 0);
+  r.setClearColor(0x000000, 0);
+  r.render(scene, cam);
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  c.getContext('2d').drawImage(r.domElement, 0, 0);
+  scene.remove(grp);
+  mesh.dispose(); geo.dispose(); mat.dispose();
   return c;
 }
 
@@ -70,18 +107,17 @@ export function fmtTime(sec) {
 
 function drawQR(g, text, x, y, size) {
   let qr;
-  try { qr = qrcode(0, 'M'); qr.addData(text); qr.make(); } catch (e) {
+  try { qr = qrcode(0, 'L'); qr.addData(text); qr.make(); } catch (e) {
     qr = qrcode(0, 'L'); qr.addData(siteUrl()); qr.make();
   }
   const n = qr.getModuleCount();
-  const cell = size / n;
-  g.fillStyle = '#4A3F6B';
+  const cell = Math.floor(size / n);
+  const off = (size - cell * n) / 2;
+  g.fillStyle = '#2E2648';
   for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
-    if (qr.isDark(r, c)) {
-      rr(g, x + c * cell + cell * 0.06, y + r * cell + cell * 0.06, cell * 0.88, cell * 0.88, cell * 0.3);
-      g.fill();
-    }
+    if (qr.isDark(r, c)) g.fillRect(x + off + c * cell, y + off + r * cell, cell, cell);
   }
+  return n;
 }
 
 const TILE_COLS = ['#FF8FAB', '#FFC93C', '#5FD39C', '#6FB1FF', '#B08CF0', '#FF9F5A'];
@@ -110,7 +146,7 @@ export function drawLogoTiles(g, text, cx, cy, tile, fontPx) {
   });
 }
 
-export async function makeShareCard({ entry, result, link, index }) {
+export async function makeShareCard({ entry, result, qrUrl, index }) {
   try { await document.fonts.ready; } catch (e) { /* */ }
   const W = 1080, H = 1440;
   const cv = document.createElement('canvas');
@@ -119,7 +155,6 @@ export async function makeShareCard({ entry, result, link, index }) {
   const bg = g.createLinearGradient(0, 0, W, H);
   bg.addColorStop(0, '#FFD1E3'); bg.addColorStop(0.5, '#FFF1D6'); bg.addColorStop(1, '#CDEBFF');
   g.fillStyle = bg; g.fillRect(0, 0, W, H);
-  // 彩色小方块装饰
   const rnd = (() => { let s = 7; return () => (s = (s * 16807) % 2147483647) / 2147483647; })();
   for (let i = 0; i < 46; i++) {
     const x = rnd() * W, y = rnd() * H, s = 14 + rnd() * 34;
@@ -136,67 +171,79 @@ export async function makeShareCard({ entry, result, link, index }) {
   g.fillStyle = '#5A4A86';
   g.fillText(CONFIG.GAME_NAME_EN, W / 2, 268);
 
-  // 主卡片
   g.save();
   g.shadowColor = 'rgba(120,80,160,0.25)'; g.shadowBlur = 50; g.shadowOffsetY = 18;
-  rr(g, 70, 318, W - 140, 820, 60);
+  rr(g, 70, 318, W - 140, 830, 60);
   g.fillStyle = 'rgba(255,255,255,0.94)'; g.fill();
   g.restore();
-  // 模型
-  const img = renderModel(entry.data, 900, { t: 1.3 });
+
+  // 还没唤醒的谜题方块（不剧透最终样子）
+  const img = renderPuzzle(entry.data, 900);
   g.save();
   g.fillStyle = 'rgba(160,120,200,0.18)';
-  g.beginPath(); g.ellipse(W / 2, 930, 230, 34, 0, 0, Math.PI * 2); g.fill();
+  g.beginPath(); g.ellipse(W / 2, 905, 240, 34, 0, 0, Math.PI * 2); g.fill();
   g.restore();
-  g.drawImage(img, W / 2 - 330, 300, 660, 660);
-  // 已唤醒徽章
+  g.drawImage(img, W / 2 - 300, 330, 600, 600);
+  // Zzz
   g.save();
-  g.translate(W - 210, 390); g.rotate(0.18);
-  rr(g, -110, -40, 220, 80, 40);
-  g.fillStyle = '#FF7EA6'; g.fill();
-  g.fillStyle = '#fff'; g.font = '44px "ZCOOL KuaiLe", sans-serif';
-  g.fillText(result && result.ok ? '已唤醒!' : '新关卡!', 0, 4);
+  g.fillStyle = '#9B7FE6'; g.strokeStyle = '#fff'; g.lineWidth = 10; g.lineJoin = 'round';
+  [[W / 2 + 230, 470, 52], [W / 2 + 285, 410, 66], [W / 2 + 350, 345, 82]].forEach(([x, y, s]) => {
+    g.font = `800 ${s}px "Baloo 2", sans-serif`;
+    g.strokeText('Z', x, y); g.fillText('Z', x, y);
+  });
+  g.restore();
+  // 角标
+  g.save();
+  g.translate(250, 400); g.rotate(-0.16);
+  rr(g, -120, -40, 240, 80, 40);
+  g.fillStyle = '#FFC93C'; g.fill();
+  g.fillStyle = '#6B4A00'; g.font = '40px "ZCOOL KuaiLe", sans-serif';
+  g.fillText('等你唤醒', 0, 4);
   g.restore();
 
-  const lvName = (index ? `Lv.${index} · ` : '') + entry.name;
+  // 主标语
+  g.fillStyle = '#FF6F9C';
+  g.font = '76px "ZCOOL KuaiLe", "PingFang SC", sans-serif';
+  g.fillText('快来唤醒我吧！', W / 2, 990);
+  const L = entry.data;
+  const dims = `${L.w}×${L.h}×${L.d}`;
   g.fillStyle = '#5A4A86';
-  g.font = '62px "ZCOOL KuaiLe", "PingFang SC", sans-serif';
-  g.fillText(lvName, W / 2, 1012);
+  g.font = '38px "ZCOOL KuaiLe", "PingFang SC", sans-serif';
+  const sub = index ? `Lv.${index} · ${dims} 神秘小伙伴` : `「${entry.name}」${entry.author ? ' by ' + entry.author : ''} · ${dims}`;
+  g.fillText(sub, W / 2, 1060);
   if (result && result.ok) {
-    const y = 1086;
-    for (let i = 0; i < 3; i++) star(g, W / 2 - 330 + i * 62, y, 25, i < result.stars ? '#FFC93C' : '#E8E1F2');
-    g.font = '700 40px "Baloo 2", "ZCOOL KuaiLe", sans-serif';
+    const y = 1112;
+    for (let i = 0; i < 3; i++) star(g, W / 2 - 300 + i * 50, y, 20, i < result.stars ? '#FFC93C' : '#E8E1F2');
+    g.font = '34px "ZCOOL KuaiLe", "Baloo 2", sans-serif';
     g.fillStyle = '#7A6E99';
     g.textAlign = 'left';
-    g.fillText('用时 ' + fmtTime(result.time), W / 2 - 150, y + 2);
-    g.fillText('失误 ' + result.mistakes, W / 2 + 140, y + 2);
+    g.fillText(`我用 ${fmtTime(result.time)} 叫醒了它，你也来试试！`, W / 2 - 160, y + 2);
     g.textAlign = 'center';
   } else {
-    g.font = '36px "ZCOOL KuaiLe", sans-serif';
+    g.font = '32px "ZCOOL KuaiLe", sans-serif';
     g.fillStyle = '#7A6E99';
-    const L = entry.data;
-    g.fillText(`${L.w}×${L.h}×${L.d} 的体素谜题，${entry.author ? entry.author + ' 出品，' : ''}来挑战吧！`, W / 2, 1086);
+    g.fillText('看数字敲方块，把它叫醒就知道它是谁啦～', W / 2, 1112);
   }
 
-  // 底部：网址 + 二维码
-  const url = link || siteUrl();
-  rr(g, 70, 1176, W - 140, 214, 44);
-  g.fillStyle = 'rgba(255,255,255,0.8)'; g.fill();
+  // 底部：网址 + 简洁二维码
+  const url = qrUrl || siteUrl();
+  rr(g, 70, 1180, W - 140, 220, 44);
+  g.fillStyle = 'rgba(255,255,255,0.85)'; g.fill();
   g.textAlign = 'left';
   g.fillStyle = '#5A4A86';
   g.font = '46px "ZCOOL KuaiLe", sans-serif';
-  g.fillText(link && link !== siteUrl() ? '扫码挑战这个关卡' : '扫码一起来玩', 116, 1236);
-  g.font = '30px "ZCOOL KuaiLe", "PingFang SC", sans-serif';
+  g.fillText(index ? '扫码直接挑战这一关' : '扫码来玩', 116, 1240);
+  g.font = '28px "ZCOOL KuaiLe", "PingFang SC", sans-serif';
   g.fillStyle = '#8C7FB0';
-  g.fillText(CONFIG.SHARE_SLOGAN, 116, 1294);
+  g.fillText(index ? CONFIG.SHARE_SLOGAN : '进入后点「输入关卡码」，粘贴消息里的关卡码', 116, 1296);
   g.font = '700 30px "Baloo 2", sans-serif';
   g.fillStyle = '#FF6F9C';
   let shown = siteUrl().replace(/^https?:\/\//, '').replace(/\/$/, '');
   if (shown.length > 34) shown = shown.slice(0, 33) + '…';
-  g.fillText(shown, 116, 1346);
+  g.fillText(shown, 116, 1350);
   g.fillStyle = '#fff';
-  rr(g, W - 290, 1188, 190, 190, 26); g.fill();
-  drawQR(g, url.length > 1400 ? siteUrl() : url, W - 280, 1198, 170);
+  rr(g, W - 312, 1186, 208, 208, 22); g.fill();
+  drawQR(g, url, W - 300, 1198, 184);
   return cv;
 }
 

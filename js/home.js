@@ -72,6 +72,8 @@ export class HomeMode {
     if (ray.distanceToPoint(c) < this.model.radius * s) { this.model.jump(); this.app.audio.play('jump'); }
   }
 
+  onXRAction(ray) { this.onTap(ray); }
+
   update(dt, t) {
     if (this.model) {
       this.model.update(dt, t, this.app.store.config.animSpeed || 1);

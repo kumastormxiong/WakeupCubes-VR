@@ -34,6 +34,7 @@ function toast(msg, ms = 2200) {
   t.classList.add('show');
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => t.classList.remove('show'), ms);
+  if (app.vrPanel && app.world && app.world.isXR) app.vrPanel.toast(msg);
 }
 app.toast = toast;
 
@@ -322,21 +323,25 @@ function leavePlay() {
 // ---------- 分享 ----------
 async function shareResult(entry, result) {
   toast('正在生成分享图…', 1200);
-  let link = siteUrl();
-  if (!entry.official) {
-    try { link = shareLink(await encodeLevel(entry)); } catch (e) { /* 用首页 */ }
+  const idx = officialIndex(entry);
+  // 官方关卡：短链接 ?lv=，二维码很简单；玩家关卡：二维码只放网址，关卡码放在文字里
+  const qrUrl = idx ? siteUrl() + '?lv=' + entry.id : siteUrl();
+  let link = qrUrl, code = '';
+  if (!idx) {
+    try { code = await encodeLevel(entry); link = shareLink(code); } catch (e) { /* 用首页 */ }
   }
-  const cv = await makeShareCard({ entry, result, link, index: officialIndex(entry) });
+  const cv = await makeShareCard({ entry, result, qrUrl, index: idx });
   const url = cv.toDataURL('image/png');
   audio.play('share');
-  const text = result && result.ok
-    ? `我在《${CONFIG.GAME_NAME}》唤醒了「${entry.name}」！用时 ${fmtTime(result.time)}，快来一起玩～`
-    : `来挑战我在《${CONFIG.GAME_NAME}》里做的关卡「${entry.name}」吧！`;
+  const head = result && result.ok
+    ? `我在《${CONFIG.GAME_NAME}》里用 ${fmtTime(result.time)} 叫醒了一个小伙伴，快来唤醒它吧！`
+    : `《${CONFIG.GAME_NAME}》里有个方块在等你唤醒，快来试试！`;
+  const text = head + (code ? `\n关卡码：${code}` : '');
   modal({
-    title: '分享给朋友', wide: false,
-    html: `<img class="share-img" src="${url}" alt="分享图"><p style="font-size:13px;color:var(--ink-soft)">图片上带有游戏名称、网址和二维码。手机上可以直接长按图片保存。</p>`,
+    title: '分享给朋友',
+    html: `<img class="share-img" src="${url}" alt="分享图"><p style="font-size:13px;color:var(--ink-soft)">分享图只展示还没唤醒的谜题方块，不会剧透。手机上可以长按图片保存。</p>`,
     actions: [
-      { label: '复制链接', ic: 'link', onClick: () => { copyText(text + '\n' + link); return false; } },
+      { label: '复制链接', ic: 'link', onClick: () => { copyText(head + '\n' + link); return false; } },
       { label: '保存图片', ic: 'download', onClick: async () => { downloadBlob(await canvasToBlob(cv), `wakeup-cubes-${Date.now()}.png`); return false; } },
       { label: '分享', cls: 'pink', ic: 'share', onClick: async () => { const r = await shareCanvas(cv, { title: CONFIG.GAME_NAME, text, url: link, filename: 'wakeup-cubes.png' }); if (r === 'download') toast('已保存图片，发给朋友吧～'); return false; } },
     ],
@@ -407,7 +412,7 @@ function showHowto() {
       <div class="step"><div class="demo zero">0</div><div><b>0 = 这一排全部敲掉</b><br>从 0 开始是最轻松的入门方法！</div></div>
       <div class="step"><div class="demo ok">${ICON.shield}</div><div><b>敲除 & 保护</b><br>电脑：左键敲掉、右键保护；手机：点击敲掉、长按保护。确定要留的方块先保护起来，就不会误敲啦。敲错会扣一颗心哦。</div></div>
       <div class="step"><div class="demo">${ICON.layers}</div><div><b>切片看里面</b><br>拖动转视角，用 X / Y / Z 滑块一层层剥开外壳，敲掉藏在里面的多余方块。全部敲完小伙伴就会醒来！</div></div>
-      <div class="step"><div class="demo">${ICON.vr}</div><div><b>Quest VR</b><br>扳机：敲除（或当前工具）· 侧握键：保护 · A/X 键：切换工具 · 摇杆：旋转方块 · 左侧悬浮面板：切片、换关、退出。</div></div>
+      <div class="step"><div class="demo">${ICON.vr}</div><div><b>Quest VR</b><br>扳机：敲除（或当前工具）· 侧握键：保护 · A/X 键：切换工具 · 摇杆：旋转方块 · 左侧悬浮面板：切片、选关、回主页、创造关卡、退出。</div></div>
     </div>`,
     actions: [{ label: '明白啦！', cls: 'pink' }],
   });
@@ -539,7 +544,7 @@ function saveDraft() {
     try { localStorage.setItem(DRAFT_KEY, JSON.stringify(app.creator.toEntry())); } catch (e) { /* */ }
   }, 400);
 }
-app.onCreatorChange = (cr, pickOnly) => { if (app.screen === 'creator') syncCreatorUI(); if (!pickOnly) saveDraft(); };
+app.onCreatorChange = (cr, pickOnly) => { if (app.screen === 'creator') { syncCreatorUI(); if (app.world && app.world.isXR) updateVRPanel(); } if (!pickOnly) saveDraft(); };
 
 function validateDoc() {
   const st = app.creator.stats();
@@ -691,69 +696,163 @@ function bindAdmin() {
 }
 
 // ---------- VR ----------
+// VR 中的菜单状态：main 主菜单 / levels 选关
+app.vrMenu = 'main';
+app.vrLevelTab = 'official';
+app.vrLevelPage = 0;
+app.vrTplIndex = -1;
+
 function updateVRPanel() {
   const panel = app.vrPanel;
   if (!panel || !app.world.isXR) return;
   panel.show(true);
-  if (app.screen === 'play') {
-    const info = app.play.stateInfo();
-    const e = info.entry;
-    const hearts = info.casual ? '休闲模式' : '♥'.repeat(Math.max(0, info.lives)) + '♡'.repeat(Math.max(0, info.maxLives - info.lives));
-    if (info.state === 'won' || info.state === 'waking') {
-      const r = info.result || { stars: 0, time: 0, mistakes: 0 };
-      const nx = nextEntry(e);
-      panel.set({
-        title: `「${e.name}」醒啦！`, sub: '★'.repeat(r.stars) + '☆'.repeat(3 - r.stars),
-        info: `用时 ${fmtTime(r.time)} · 失误 ${r.mistakes} · 扣扳机戳戳它`,
-        buttons: [
-          ...rowButtons(200, [{ id: 'next', label: nx ? '下一关 ▶' : '全部完成!', active: !!nx, color: '#4FD6A0' }, { id: 'again', label: '再玩一次' }], { h: 110 }),
-          ...rowButtons(340, [{ id: 'coll', label: '去收藏室' }, { id: 'exit', label: '退出 VR' }], { h: 100 }),
-        ],
-      }, onVRPress);
-    } else if (info.state === 'over') {
-      panel.set({
-        title: '方块又睡着啦…', sub: '', info: '没关系，再来一次！',
-        buttons: [...rowButtons(220, [{ id: 'again', label: '再试一次', active: true }, { id: 'exit', label: '退出 VR' }], { h: 120 })],
-      }, onVRPress);
-    } else {
-      const [W, H, D] = info.dims;
-      panel.set({
-        title: displayName(e), sub: hearts,
-        info: `还要敲 ${info.remaining} 块 · ${fmtTime(info.time)} · 切片 X${info.slice[0]} Y${info.slice[1]} Z${info.slice[2]}`,
-        buttons: [
-          ...rowButtons(170, [
-            { id: 'tool:break', label: '敲除 (扳机)', active: info.tool === 'break', color: '#FFCB3D' },
-            { id: 'tool:protect', label: '保护', active: info.tool === 'protect', color: '#4FD6A0' },
-          ], { h: 96 }),
-          ...rowButtons(290, [
-            { id: 's:0:1', label: 'X 剥层', size: 30 }, { id: 's:0:-1', label: 'X 还原', size: 30 },
-            { id: 's:1:1', label: 'Y 剥层', size: 30 }, { id: 's:1:-1', label: 'Y 还原', size: 30 },
-            { id: 's:2:1', label: 'Z 剥层', size: 30 }, { id: 's:2:-1', label: 'Z 还原', size: 30 },
-          ], { h: 84, gap: 10 }),
-          ...rowButtons(400, [
-            { id: 'prev', label: '◀ 上一关', size: 32 }, { id: 'again', label: '重来', size: 32 }, { id: 'next', label: '下一关 ▶', size: 32 },
-          ], { h: 84 }),
-          ...rowButtons(504, [{ id: 'exit', label: '退出 VR', size: 32 }], { h: 80, x0: 300, x1: 724 }),
-        ],
-      }, onVRPress);
-      void W; void H; void D;
-    }
-  } else if (app.screen === 'collection') {
+  if (app.screen === 'play') vrPlayPanel(panel);
+  else if (app.screen === 'collection') {
     panel.set({
       title: '生态收藏室', sub: `${app.collection.items.length} 位`,
       info: '用扳机戳戳小伙伴，它们会跳起来！',
       buttons: [
-        ...rowButtons(200, [{ id: 'cprev', label: '◀ 上一位' }, { id: 'cnext', label: '下一位 ▶' }], { h: 100 }),
-        ...rowButtons(330, [{ id: 'play', label: '继续闯关', active: true }, { id: 'exit', label: '退出 VR' }], { h: 100 }),
+        ...rowButtons(180, [{ id: 'cprev', label: '◀ 上一位' }, { id: 'cnext', label: '下一位 ▶' }], { h: 100 }),
+        ...rowButtons(310, [{ id: 'play', label: '继续闯关', active: true }, { id: 'home', label: '回主页' }], { h: 100 }),
+        ...rowButtons(440, [{ id: 'exit', label: '退出 VR', size: 32 }], { h: 80, x0: 300, x1: 724 }),
+      ],
+    }, onVRPress);
+  } else if (app.screen === 'creator') vrCreatorPanel(panel);
+  else if (app.vrMenu === 'levels') vrLevelsPanel(panel);
+  else {
+    const off = store.official();
+    const done = off.filter(l => store.progress(l.id)).length;
+    panel.set({
+      title: CONFIG.GAME_NAME, sub: `${done}/${off.length} 已唤醒`,
+      info: '欢迎来到方块岛！选一项开始吧',
+      buttons: [
+        ...rowButtons(170, [{ id: 'play', label: '继续闯关 ▶', active: true }, { id: 'levels', label: '选择关卡' }], { h: 110 }),
+        ...rowButtons(305, [{ id: 'create', label: '创造关卡', active: true, color: '#FFCB3D' }, { id: 'coll', label: '收藏室' }], { h: 110 }),
+        ...rowButtons(445, [{ id: 'exit', label: '退出 VR', size: 32 }], { h: 84, x0: 300, x1: 724 }),
+      ],
+    }, onVRPress);
+  }
+}
+
+function vrPlayPanel(panel) {
+  const info = app.play.stateInfo();
+  const e = info.entry;
+  const test = app.playCtx && app.playCtx.test;
+  const hearts = info.casual ? '休闲模式' : '♥'.repeat(Math.max(0, info.lives)) + '♡'.repeat(Math.max(0, info.maxLives - info.lives));
+  if (info.state === 'won' || info.state === 'waking') {
+    const r = info.result || { stars: 0, time: 0, mistakes: 0 };
+    const nx = nextEntry(e);
+    const row1 = test
+      ? [{ id: 'backcr', label: '返回工坊', active: true, color: '#FFCB3D' }, { id: 'again', label: '再试一次' }]
+      : [{ id: 'next', label: nx ? '下一关 ▶' : '全部完成!', active: !!nx, color: '#4FD6A0' }, { id: 'again', label: '再玩一次' }];
+    panel.set({
+      title: `「${e.name}」醒啦！`, sub: '★'.repeat(r.stars) + '☆'.repeat(3 - r.stars),
+      info: `用时 ${fmtTime(r.time)} · 失误 ${r.mistakes} · 扣扳机戳戳它`,
+      buttons: [
+        ...rowButtons(180, row1, { h: 110 }),
+        ...rowButtons(315, [{ id: 'coll', label: '去收藏室' }, { id: 'home', label: '回主页' }], { h: 100 }),
+        ...rowButtons(445, [{ id: 'exit', label: '退出 VR', size: 32 }], { h: 84, x0: 300, x1: 724 }),
+      ],
+    }, onVRPress);
+  } else if (info.state === 'over') {
+    panel.set({
+      title: '方块又睡着啦…', sub: '', info: '没关系，再来一次！',
+      buttons: [
+        ...rowButtons(190, [{ id: 'again', label: '再试一次', active: true }, { id: test ? 'backcr' : 'home', label: test ? '返回工坊' : '回主页' }], { h: 120 }),
+        ...rowButtons(350, [{ id: 'exit', label: '退出 VR', size: 32 }], { h: 84, x0: 300, x1: 724 }),
       ],
     }, onVRPress);
   } else {
     panel.set({
-      title: CONFIG.GAME_NAME, sub: 'VR',
-      info: '选择一项开始吧',
-      buttons: [...rowButtons(220, [{ id: 'play', label: '继续闯关', active: true }, { id: 'coll', label: '收藏室' }, { id: 'exit', label: '退出 VR' }], { h: 120 })],
+      title: displayName(e), sub: hearts, height: 740,
+      info: `还要敲 ${info.remaining} 块 · ${fmtTime(info.time)} · 切片 X${info.slice[0]} Y${info.slice[1]} Z${info.slice[2]}`,
+      buttons: [
+        ...rowButtons(165, [
+          { id: 'tool:break', label: '敲除 (扳机)', active: info.tool === 'break', color: '#FFCB3D' },
+          { id: 'tool:protect', label: '保护 (侧握键)', active: info.tool === 'protect', color: '#4FD6A0' },
+        ], { h: 96 }),
+        ...rowButtons(282, [
+          { id: 's:0:1', label: 'X 剥层', size: 30 }, { id: 's:0:-1', label: 'X 还原', size: 30 },
+          { id: 's:1:1', label: 'Y 剥层', size: 30 }, { id: 's:1:-1', label: 'Y 还原', size: 30 },
+          { id: 's:2:1', label: 'Z 剥层', size: 30 }, { id: 's:2:-1', label: 'Z 还原', size: 30 },
+        ], { h: 84, gap: 10 }),
+        ...rowButtons(390, test
+          ? [{ id: 'again', label: '重来', size: 32 }, { id: 'backcr', label: '返回工坊', size: 32 }]
+          : [{ id: 'prev', label: '◀ 上一关', size: 32 }, { id: 'again', label: '重来', size: 32 }, { id: 'next', label: '下一关 ▶', size: 32 }], { h: 84 }),
+        ...rowButtons(498, [{ id: 'levels', label: '选择关卡', size: 32 }, { id: 'home', label: '回主页', size: 32 }], { h: 84 }),
+        ...rowButtons(606, [{ id: 'exit', label: '退出 VR', size: 32 }], { h: 80, x0: 300, x1: 724 }),
+      ],
     }, onVRPress);
   }
+}
+
+function vrLevelsPanel(panel) {
+  const list = app.vrLevelTab === 'official' ? store.official() : store.custom();
+  const per = 10;
+  const pages = Math.max(1, Math.ceil(list.length / per));
+  app.vrLevelPage = Math.min(app.vrLevelPage, pages - 1);
+  const slice = list.slice(app.vrLevelPage * per, app.vrLevelPage * per + per);
+  const btns = [
+    ...rowButtons(150, [
+      { id: 'tab:official', label: '官方关卡', active: app.vrLevelTab === 'official', size: 32 },
+      { id: 'tab:custom', label: '玩家关卡', active: app.vrLevelTab === 'custom', size: 32 },
+    ], { h: 76, x0: 200, x1: 824 }),
+  ];
+  for (let r = 0; r < 2; r++) {
+    const row = slice.slice(r * 5, r * 5 + 5).map((L, i) => {
+      const p = store.progress(L.id);
+      const n = app.vrLevelPage * per + r * 5 + i + 1;
+      const showName = p || app.vrLevelTab === 'custom';
+      return { id: 'lv:' + L.id, label: (app.vrLevelTab === 'official' ? n + ' ' : '') + (p ? '★'.repeat(p.stars) : ''), sub: showName ? L.name : `${L.data.w}×${L.data.h}×${L.data.d}`, size: 34, active: !!p, color: '#FFB3CB' };
+    });
+    while (row.length < 5) row.push({ id: 'none' + r + row.length, label: '', sub: '' });
+    btns.push(...rowButtons(250 + r * 130, row, { h: 116, gap: 14 }));
+  }
+  btns.push(...rowButtons(530, [
+    { id: 'page:-1', label: '◀ 上一页', size: 30 },
+    { id: 'home', label: '回主页', size: 30 },
+    { id: 'page:1', label: '下一页 ▶', size: 30 },
+  ], { h: 80 }));
+  btns.push(...rowButtons(630, [{ id: 'exit', label: '退出 VR', size: 30 }], { h: 74, x0: 300, x1: 724 }));
+  panel.set({
+    title: '选择关卡', sub: `${app.vrLevelPage + 1}/${pages}`, height: 730,
+    info: list.length ? '用扳机点一个关卡开始' : '还没有玩家关卡，去「创造关卡」做一个吧！',
+    buttons: btns,
+  }, onVRPress);
+}
+
+function vrCreatorPanel(panel) {
+  const cr = app.creator;
+  const st = cr.stats();
+  const d = cr.doc;
+  const tools = [['add', '添加'], ['erase', '擦除'], ['paint', '上色'], ['pick', '吸管']];
+  const btns = [
+    ...rowButtons(150, tools.map(([t, n]) => ({ id: 'ct:' + t, label: n, active: cr.tool === t, size: 32 })), { h: 76, gap: 12 }),
+  ];
+  const sw = PALETTE.map(p => ({ id: 'cc:' + p.c, swatch: p.c, active: p.c.toLowerCase() === String(cr.color).toLowerCase() }));
+  btns.push(...rowButtons(244, sw.slice(0, 11), { h: 64, gap: 10 }));
+  btns.push(...rowButtons(318, sw.slice(11), { h: 64, gap: 10 }));
+  const pn = ['躯干', '左摆', '右摆', '旋转', '弹跳', '漂浮'];
+  btns.push(...rowButtons(400, PARTS.map(p => ({ id: 'cp:' + p.id, label: p.id + ' ' + pn[p.id], dot: p.color, active: cr.part === p.id, color: '#B08CF0', size: 26 })), { h: 70, gap: 10 }));
+  btns.push(...rowButtons(488, [
+    { id: 'cmirror', label: cr.mirror ? '镜像:开' : '镜像:关', active: cr.mirror, color: '#4FD6A0', size: 30 },
+    { id: 'cundo', label: '撤销', size: 30 }, { id: 'credo', label: '重做', size: 30 }, { id: 'cclear', label: '清空', size: 30 },
+  ], { h: 76, gap: 12 }));
+  btns.push(...rowButtons(582, [
+    { id: 'csize:-1', label: '尺寸 −', size: 30 }, { id: 'csize:1', label: '尺寸 +', size: 30 },
+    { id: 'ctpl', label: '换个模板', size: 30 }, { id: 'cnew', label: '空白画布', size: 30 },
+  ], { h: 76, gap: 12 }));
+  btns.push(...rowButtons(678, [
+    { id: 'cpreview', label: cr.preview ? '停止预览' : '预览唤醒', active: !!cr.preview, color: '#B08CF0', size: 32 },
+    { id: 'ctest', label: '试玩', size: 32 },
+    { id: 'csave', label: '保存关卡', active: true, color: '#FF7EA6', size: 32 },
+  ], { h: 90, gap: 14 }));
+  btns.push(...rowButtons(790, [{ id: 'home', label: '回主页', size: 30 }, { id: 'exit', label: '退出 VR', size: 30 }], { h: 76 }));
+  panel.set({
+    title: '造物工坊 · ' + (d.name || ''), sub: `${st.count} 块`, height: 900,
+    info: `${d.w}×${d.h}×${d.d} · 扳机=当前工具 · 侧握键=擦除 · 摇杆=旋转`,
+    buttons: btns,
+  }, onVRPress);
 }
 
 function nextUnfinished() {
@@ -761,21 +860,67 @@ function nextUnfinished() {
   return off.find(l => !store.progress(l.id)) || off[0];
 }
 
+function vrSaveCreator() {
+  const err = validateDoc();
+  if (err) { toast(err); return; }
+  const cr = app.creator;
+  const e = cr.toEntry();
+  if (!e.author) e.author = store.config.playerName || '';
+  if (cr.doc.official && e.id) e.official = true;
+  const saved = store.upsertLevel(e);
+  cr.doc.id = saved.id;
+  saveDraft();
+  audio.play('share');
+  toast('已保存到「玩家关卡」！摘下头显后可在关卡页分享');
+}
+
 function onVRPress(id) {
   audio.play('click');
-  const info = app.play.stateInfo();
+  const cr = app.creator;
   if (id.startsWith('tool:')) setTool(id.slice(5));
   else if (id.startsWith('s:')) {
     const [, ax, d] = id.split(':');
-    app.play.setSlice(+ax, info.slice[+ax] + +d);
-  } else if (id === 'again') startLevel(app.playCtx.entry, app.playCtx);
+    app.play.setSlice(+ax, app.play.slice[+ax] + +d);
+  } else if (id === 'again') { if (app.playCtx) startLevel(app.playCtx.entry, app.playCtx); }
   else if (id === 'next') { const n = nextEntry(app.playCtx && app.playCtx.entry); if (n) startLevel(n, { from: 'levels' }); }
   else if (id === 'prev') { const p = prevEntry(app.playCtx && app.playCtx.entry); if (p) startLevel(p, { from: 'levels' }); }
-  else if (id === 'coll') goCollection(app.playCtx && app.playCtx.entry && app.playCtx.entry.id);
+  else if (id === 'backcr') goCreator(null, { keep: true });
+  else if (id === 'coll') goCollection(app.screen === 'play' && app.playCtx && app.playCtx.entry ? app.playCtx.entry.id : undefined);
   else if (id === 'cprev') app.collection.focus(-1);
   else if (id === 'cnext') app.collection.focus(1);
   else if (id === 'play') startLevel(nextUnfinished(), { from: 'home' });
+  else if (id === 'home') { app.vrMenu = 'main'; goHome(); }
+  else if (id === 'levels') { app.vrMenu = 'levels'; if (app.screen !== 'home') goHome(); app.vrMenu = 'levels'; }
+  else if (id.startsWith('tab:')) { app.vrLevelTab = id.slice(4); app.vrLevelPage = 0; }
+  else if (id.startsWith('page:')) app.vrLevelPage = Math.max(0, app.vrLevelPage + +id.slice(5));
+  else if (id.startsWith('lv:')) { const L = store.getLevel(id.slice(3)); if (L) startLevel(L, { from: 'levels' }); }
+  else if (id === 'create') goCreator(null);
+  // ---- 工坊 ----
+  else if (id.startsWith('ct:')) cr.tool = id.slice(3);
+  else if (id.startsWith('cc:')) { cr.color = id.slice(3); if (cr.tool === 'erase' || cr.tool === 'pick') cr.tool = 'add'; }
+  else if (id.startsWith('cp:')) cr.part = +id.slice(3);
+  else if (id === 'cmirror') cr.mirror = !cr.mirror;
+  else if (id === 'cundo') cr.undo();
+  else if (id === 'credo') cr.redo();
+  else if (id === 'cclear') cr.clear();
+  else if (id.startsWith('csize:')) {
+    const n = Math.max(5, Math.min(12, Math.max(cr.doc.w, cr.doc.h, cr.doc.d) + +id.slice(6)));
+    cr.resize(n, n, n);
+    app.world.applyLayout();
+  } else if (id === 'ctpl') {
+    const all = store.levels();
+    if (all.length) {
+      app.vrTplIndex = (app.vrTplIndex + 1) % all.length;
+      cr.loadEntry(all[app.vrTplIndex], true);
+      app.world.applyLayout();
+      toast('模板：' + all[app.vrTplIndex].name);
+    }
+  } else if (id === 'cnew') { cr.newDoc(7, 7, 7); app.world.applyLayout(); }
+  else if (id === 'cpreview') { if (cr.preview) cr.stopPreview(); else if (!cr.startPreview()) toast('先放几个方块吧～'); }
+  else if (id === 'ctest') { const err = validateDoc(); if (err) toast(err); else startLevel(cr.toEntry(), { from: 'creator', test: true }); }
+  else if (id === 'csave') vrSaveCreator();
   else if (id === 'exit') app.world.exitVR();
+  if (app.screen === 'creator') syncCreatorUI();
   updateVRPanel();
 }
 
@@ -855,7 +1000,8 @@ async function boot() {
   $('#collNext').onclick = () => app.collection.focus(1);
   $('#btnPlayVR').onclick = enterVR;
   $('#btnCollVR').onclick = enterVR;
-  $('#btnHomeVR').onclick = async () => { startLevel(nextUnfinished(), { from: 'home' }); await enterVR(); };
+  $('#btnHomeVR').onclick = async () => { app.vrMenu = 'main'; await enterVR(); };
+  $('#crVR').onclick = enterVR;
   buildCreatorUI();
   bindAdmin();
   store.onChange(() => { if (app.screen === 'home') updateHome(); });
@@ -874,7 +1020,11 @@ async function boot() {
   // 打开分享链接
   const params = new URLSearchParams(location.search);
   const share = params.get('share');
-  if (share) {
+  const lvParam = params.get('lv');
+  if (lvParam && store.getLevel(lvParam)) {
+    history.replaceState(null, '', location.pathname);
+    setTimeout(() => startLevel(store.getLevel(lvParam), { from: 'home' }), 300);
+  } else if (share) {
     history.replaceState(null, '', location.pathname);
     setTimeout(() => openSharedCode(share), 600);
   }

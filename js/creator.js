@@ -156,6 +156,27 @@ export class CreatorMode {
   }
   exit() { this.stopPreview(); this.ghost.visible = false; if (this.world) this.world.setViewShift(0, 0); }
 
+  // ---------- VR ----------
+  vrLayout() {
+    const md = Math.max(this.doc.w, this.doc.h, this.doc.d);
+    return { scale: 0.6 / md, position: [0, 1.0, -0.72] };
+  }
+  onXRChange(on) { if (!on) this.root.rotation.set(0, 0, 0); this.ghost.visible = false; }
+  onXRHover(ray) {
+    this.onHover(ray);
+    if (!this.ghost.visible) return null;
+    const wp = this.ghost.getWorldPosition(new THREE.Vector3());
+    return Math.max(0.05, ray.origin.distanceTo(wp) - 0.02);
+  }
+  onXRAction(ray, type) {
+    this.onTap(ray, { button: type === 'squeeze' ? 2 : 0, long: false, type: 'xr' });
+  }
+  onXRButton(name) { if (name === 'a') this.undo(); else if (name === 'b') this.redo(); }
+  onXRStick(sx, sy, dt) {
+    this.root.rotation.y += sx * dt * 2.2;
+    this.root.rotation.x = THREE.MathUtils.clamp(this.root.rotation.x + sy * dt * 1.4, -0.9, 0.9);
+  }
+
   // ---------- 拾取 ----------
   target(ray) {
     if (!ray) return null;

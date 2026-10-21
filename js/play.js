@@ -378,7 +378,7 @@ export class PlayMode {
     return {
       state: this.state, tool: this.tool, lives: this.lives, maxLives: this.maxLives, casual: this.casual,
       remaining: this.remaining, total: this.total, time: this.elapsed, mistakes: this.mistakes,
-      slice: this.slice.slice(), dims: [this.W, this.H, this.D], entry: this.entry, result: this.result,
+      slice: (this.slice || [0, 0, 0]).slice(), dims: [this.W, this.H, this.D], entry: this.entry, result: this.result,
     };
   }
   emit(extra) { if (this.app.onPlayState) this.app.onPlayState(this.stateInfo(), extra || {}); }

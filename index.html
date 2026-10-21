@@ -149,6 +149,7 @@
         </div>
       </div>
       <div class="row cr-top-actions">
+        <button class="icon-btn vr-btn hidden" id="crVR" data-ic="vr" title="在 VR 中创作"></button>
         <button class="pill-btn soft" id="crTemplate" data-ic="layers">模板</button>
         <button class="pill-btn soft" id="crTest" data-ic="play">试玩</button>
         <button class="pill-btn pink" id="crPublish" data-ic="share">发布分享</button>
@@ -207,7 +208,7 @@
         </section>
         <section class="glass card">
           <h2 data-ic="music">背景音乐</h2>
-          <p class="note">把 Suno 生成的 mp3 放进网站的 <code>music/</code> 文件夹，命名为 <code>bgm1.mp3</code>、<code>bgm2.mp3</code>…（最多 8 首）就会自动轮播；也可以在 <code>music/playlist.json</code> 里写曲名并指定在哪个场景播放。没有放音乐时会播放内置的八音盒摇篮曲。</p>
+          <p class="note">把 Suno 生成的 mp3 放进网站的 <code>music/</code> 文件夹，命名为 <code>bgm1.mp3</code>、<code>bgm2.mp3</code>…（最多 8 首）就会自动轮播；也可以在 <code>music/playlist.json</code> 里写曲名并指定在哪个场景播放。没有放音乐时会播放内置的八音盒组曲（约 2 分 50 秒一轮）。</p>
           <div class="now" id="adminNow"></div>
           <div class="row"><button class="pill-btn" id="adminNextTrack" data-ic="music">切换下一首</button></div>
           <h2 data-ic="star" class="mt">数据</h2>
