@@ -1,5 +1,5 @@
 // 解谜模式：敲除 / 保护 / 切片 / 唤醒
-import * as THREE from '../vendor/three.module.js';
+import * as THREE from 'three';
 import { BLOCK, computeClues, gridRaycast, rayToGrid, makeVoxelMaterial, getBlockGeometry, getFrameGeometry, VoxelModel } from './voxel.js';
 import { PUZZLE, PALETTE } from './palette.js';
 import { Particles, Sleepy, Cheer } from './fx.js';

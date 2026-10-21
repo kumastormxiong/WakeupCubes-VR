@@ -1,5 +1,5 @@
 // VR 中的悬浮控制面板（Canvas 贴图 + 手柄射线点击）
-import * as THREE from '../vendor/three.module.js';
+import * as THREE from 'three';
 
 const W = 1024;
 const PW = 0.62;

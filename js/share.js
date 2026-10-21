@@ -1,5 +1,5 @@
 // 截图 / 缩略图 / 分享卡片（带游戏名、网址、二维码）
-import * as THREE from '../vendor/three.module.js';
+import * as THREE from 'three';
 import qrcode from '../vendor/qrcode.mjs';
 import { VoxelModel, computeClues, makeVoxelMaterial, getBlockGeometry } from './voxel.js';
 import { CONFIG } from './config.js';
