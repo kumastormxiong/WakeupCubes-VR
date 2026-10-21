@@ -96,11 +96,11 @@ class AudioSystem {
   }
 
   // 木琴音色：基频 + 高次泛音快速衰减
-  marimba(note, t = 0, vol = 0.32, dur = 0.5) {
+  marimba(note, t = 0, vol = 0.32, dur = 0.5, dest = null) {
     const f = midi(note);
-    this.tone({ f, t, dur, vol, type: 'sine', verb: 0.35 });
-    this.tone({ f: f * 3.99, t, dur: dur * 0.25, vol: vol * 0.28, type: 'sine', verb: 0.2 });
-    this.tone({ f: f * 2, t, dur: dur * 0.5, vol: vol * 0.12, type: 'triangle', verb: 0.2 });
+    this.tone({ f, t, dur, vol, type: 'sine', verb: 0.35, dest });
+    this.tone({ f: f * 3.99, t, dur: dur * 0.25, vol: vol * 0.28, type: 'sine', verb: 0.2, dest });
+    this.tone({ f: f * 2, t, dur: dur * 0.5, vol: vol * 0.12, type: 'triangle', verb: 0.2, dest });
   }
   musicbox(note, t = 0, vol = 0.22, dur = 1.4, dest = null) {
     const f = midi(note);
@@ -253,45 +253,124 @@ class AudioSystem {
 
   stopTrack() { if (this.el) { this.el.pause(); } }
 
-  // 程序化八音盒摇篮曲（没有放 Suno 曲目时的默认 BGM）
-  startProc() {
-    if (this.proc || !this.ctx) return;
+  // ---------- 内置程序化 BGM（没有放 Suno 曲目时使用） ----------
+  // 三首同风格的小曲：每首播一段时间会自动换下一首；进入关卡时随机挑一首
+  procSongs() {
+    const S = this;
+    const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+    return [
+      {
+        // 1. 八音盒摇篮曲（原曲）
+        title: '八音盒摇篮曲', bpm: 84, len: 8,
+        chords: [[60, 64, 67, 71], [57, 60, 64, 67], [53, 57, 60, 64], [55, 59, 62, 67], [60, 64, 67, 72], [57, 60, 64, 69], [53, 57, 60, 65], [55, 59, 62, 65]],
+        step(pos, ch, t, bus, eighth) {
+          if (pos === 0) ch.slice(0, 3).forEach(n => S.tone({ f: midi(n - 12), t, dur: eighth * 8.5, vol: 0.05, type: 'triangle', attack: 0.4, dest: bus, verb: 0.4 }));
+          const arp = [0, 1, 2, 3, 2, 1, 2, 3];
+          S.musicbox(ch[arp[pos]] + 12, t, pos % 2 ? 0.05 : 0.075, 1.1, bus);
+          if ((pos === 0 || pos === 3 || pos === 6) && Math.random() < 0.55) {
+            S.musicbox(72 + pick([0, 2, 4, 7, 9, 12]), t + 0.01, 0.06, 1.6, bus);
+          }
+        },
+      },
+      {
+        // 2. 星星糖华尔兹：3/4 拍，低音 + “嘭嚓嚓” 八音盒和弦
+        title: '星星糖华尔兹', bpm: 92, len: 6,
+        chords: [[53, 57, 60, 64], [50, 53, 57, 60], [46, 50, 53, 57], [48, 52, 55, 58], [53, 57, 60, 64], [45, 48, 52, 55], [46, 50, 53, 57], [48, 52, 55, 60]],
+        state: { prev: 72 },
+        step(pos, ch, t, bus, eighth) {
+          if (pos === 0) {
+            S.tone({ f: midi(ch[0] - 12), t, dur: eighth * 3, vol: 0.09, type: 'sine', attack: 0.01, dest: bus, verb: 0.2 });
+            ch.slice(0, 3).forEach(n => S.tone({ f: midi(n), t, dur: eighth * 6.4, vol: 0.03, type: 'triangle', attack: 0.5, dest: bus, verb: 0.4 }));
+          }
+          if (pos === 2 || pos === 4) {
+            S.musicbox(ch[1] + 12, t, 0.04, 0.8, bus);
+            S.musicbox(ch[2] + 12, t + 0.008, 0.035, 0.8, bus);
+          }
+          if (pos === 5 && Math.random() < 0.3) S.musicbox(ch[3] + 12, t, 0.035, 0.7, bus);
+          // 旋律：沿音阶小步走动，更像在哼歌
+          if ((pos === 0 && Math.random() < 0.8) || (pos === 3 && Math.random() < 0.4)) {
+            const scale = [65, 67, 69, 72, 74, 77, 79, 81];
+            const near = scale.filter(n => Math.abs(n - this.state.prev) <= 5);
+            const n = pick(near.length ? near : scale);
+            this.state.prev = n;
+            S.musicbox(n, t + 0.01, 0.075, pos === 0 ? 2 : 1.3, bus);
+          }
+        },
+      },
+      {
+        // 3. 泡泡散步：轻快的木琴琶音 + 沙锤 + 八音盒点缀
+        title: '泡泡散步', bpm: 100, len: 8,
+        chords: [[55, 59, 62, 66], [52, 55, 59, 62], [48, 52, 55, 59], [50, 54, 57, 60], [55, 59, 62, 67], [52, 55, 59, 64], [45, 48, 52, 55], [50, 54, 57, 62]],
+        step(pos, ch, t, bus, eighth) {
+          if (pos === 0 || pos === 4) S.tone({ f: midi(ch[0] - 12 + (pos === 4 ? 7 : 0)), t, dur: eighth * 1.6, vol: 0.08, type: 'sine', attack: 0.005, dest: bus, verb: 0.1 });
+          const arp = [0, 2, 1, 3, 2, 1, 3, 2];
+          S.marimba(ch[arp[pos]] + 12, t, pos % 2 ? 0.035 : 0.05, 0.35, bus);
+          if (pos % 2 === 1) S.noise({ t, dur: 0.04, vol: 0.018, freq: 7500, q: 0.7, type: 'highpass', dest: bus });
+          if ((pos === 0 || pos === 2 || pos === 5) && Math.random() < 0.42) {
+            S.musicbox(pick([79, 81, 83, 86, 88, 91]), t + 0.01, 0.05, 1.2, bus);
+          }
+        },
+      },
+    ];
+  }
+
+  startProc(songIdx) {
+    if (!this.ctx) return;
+    if (!this.songs) this.songs = this.procSongs();
+    if (songIdx === undefined) songIdx = this.procSong || 0;
+    if (this.proc && this.proc.idx === songIdx) return;
+    this.stopProc();
+    this.procSong = songIdx;
+    const song = this.songs[songIdx];
     const ctx = this.ctx;
     const bus = ctx.createGain(); bus.gain.value = 0.0001; bus.connect(this.music);
     bus.gain.exponentialRampToValueAtTime(0.9, ctx.currentTime + 2);
-    const chords = [[60, 64, 67, 71], [57, 60, 64, 67], [53, 57, 60, 64], [55, 59, 62, 67], [60, 64, 67, 72], [57, 60, 64, 69], [53, 57, 60, 65], [55, 59, 62, 65]];
-    const bpm = 84, eighth = 60 / bpm / 2;
-    let step = 0, next = ctx.currentTime + 0.2;
-    const melodyPool = [0, 2, 4, 7, 9, 12];
+    const eighth = 60 / song.bpm / 2;
+    let step = 0, next = ctx.currentTime + 0.3;
+    const maxBars = 32; // 大约一两分钟后换下一首
     const tick = () => {
       while (next < ctx.currentTime + 0.4) {
-        const bar = Math.floor(step / 8) % chords.length;
-        const ch = chords[bar];
-        const pos = step % 8;
-        const t = next - ctx.currentTime;
-        if (pos === 0) {
-          // 柔和的垫音
-          ch.slice(0, 3).forEach(n => this.tone({ f: midi(n - 12), t, dur: eighth * 8.5, vol: 0.05, type: 'triangle', attack: 0.4, dest: bus, verb: 0.4 }));
-        }
-        const arp = [0, 1, 2, 3, 2, 1, 2, 3];
-        this.musicbox(ch[arp[pos]] + 12, t, pos % 2 ? 0.05 : 0.075, 1.1, bus);
-        if ((pos === 0 || pos === 3 || pos === 6) && Math.random() < 0.55) {
-          const m = 72 + melodyPool[Math.floor(Math.random() * melodyPool.length)];
-          this.musicbox(m, t + 0.01, 0.06, 1.6, bus);
-        }
+        const barN = Math.floor(step / song.len);
+        if (barN >= maxBars) { this.startProc((songIdx + 1) % this.songs.length); return; }
+        const ch = song.chords[barN % song.chords.length];
+        song.step(step % song.len, ch, next - ctx.currentTime, bus, eighth);
         step++;
         next += eighth;
       }
     };
     const iv = setInterval(tick, 90);
+    this.proc = { bus, iv, idx: songIdx };
     tick();
-    this.proc = { bus, iv };
+    if (this.onTrackChange) this.onTrackChange();
+  }
+
+  // 进入关卡时随机换一首（和当前不同）
+  shuffle() {
+    if (!this.ready || !this.musicOn) return;
+    if (this.tracks.length) {
+      if (this.tracks.length < 2) return;
+      let i;
+      do { i = Math.floor(Math.random() * this.tracks.length); } while (i === this.trackIdx);
+      this.trackIdx = (i - 1 + this.tracks.length) % this.tracks.length;
+      this.nextTrack(true);
+    } else {
+      if (!this.songs) this.songs = this.procSongs();
+      let i;
+      do { i = Math.floor(Math.random() * this.songs.length); } while (i === this.procSong && this.songs.length > 1);
+      this.startProc(i);
+    }
+  }
+
+  nextSong() {
+    if (this.tracks.length) this.nextTrack(true);
+    else { if (!this.songs) this.songs = this.procSongs(); this.startProc(((this.procSong || 0) + 1) % this.songs.length); }
   }
 
   stopProc() {
     if (!this.proc) return;
     const { bus, iv } = this.proc;
     clearInterval(iv);
+    this.proc = null;
     try { bus.gain.cancelScheduledValues(this.ctx.currentTime); bus.gain.setTargetAtTime(0.0001, this.ctx.currentTime, 0.3); } catch (e) { /* */ }
     setTimeout(() => bus.disconnect(), 1500);
     this.proc = null;
@@ -300,7 +379,8 @@ class AudioSystem {
   currentTitle() {
     if (!this.musicOn) return '';
     if (this.tracks.length && this.trackIdx >= 0) return this.tracks[this.trackIdx].title;
-    return '八音盒摇篮曲';
+    if (!this.songs) this.songs = this.procSongs();
+    return this.songs[this.procSong || 0].title;
   }
 }
 

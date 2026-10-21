@@ -99,6 +99,8 @@ function displayName(entry) {
 
 // ---------- 主题 ----------
 function applyTheme(key) {
+  if (app.curTheme === key) return;
+  app.curTheme = key;
   const th = THEMES[key] || THEMES.peach;
   app.world.env.setTheme(key);
   const r = document.documentElement.style;
@@ -112,6 +114,7 @@ function applyTheme(key) {
 // ---------- 屏幕切换 ----------
 function showScreen(id) {
   app.screen = id;
+  if (id !== 'play' && app.world) applyTheme(store.config.theme);
   $$('.screen').forEach(s => s.classList.toggle('hidden', s.id !== 'scr-' + id));
   audio.setScene(id === 'levels' || id === 'admin' ? 'home' : id);
   updateVRPanel();
@@ -205,6 +208,10 @@ function startLevel(entry, ctx = {}) {
   app.play.load(entry, { casual: cfg.casual, lives: cfg.lives, speed: cfg.animSpeed });
   app.world.setMode(app.play);
   showScreen('play');
+  // 每次进关：随机一个场景主题 + 随机一首背景音乐
+  const keys = Object.keys(THEMES).filter(k => k !== app.curTheme);
+  applyTheme(keys[Math.floor(Math.random() * keys.length)]);
+  audio.shuffle();
   $('#resultCard').classList.add('hidden');
   const dims = entry.data;
   $('#playName').textContent = displayName(entry);
@@ -688,8 +695,7 @@ function bindAdmin() {
   $('#adminNextTrack').onclick = () => {
     audio.unlock();
     if (!store.config.music) { store.setConfig({ music: true }); audio.setMusic(true); }
-    else if (audio.tracks.length) audio.nextTrack(true);
-    else toast(document.body.classList.contains('dev') ? '还没有放 Suno 曲目，正在播放内置八音盒' : '当前只有这一首曲子～');
+    else audio.nextSong();
     setTimeout(renderAdmin, 300);
   };
   $('#adminResetProgress').onclick = () => modal({ title: '清空通关记录？', html: '<p>所有星星和收藏室里的小伙伴都会重新睡着。</p>', actions: [{ label: '取消' }, { label: '清空', cls: 'pink', onClick: () => { store.resetProgress(); renderAdmin(); toast('通关记录已清空'); } }] });
@@ -988,6 +994,7 @@ async function boot() {
   audio.setVolumes(store.config.sfxVol, store.config.bgmVol);
   audio.musicOn = store.config.music;
   audio.loadPlaylist().then(updateMusicBtn);
+  audio.onTrackChange = () => { updateMusicBtn(); if (app.screen === 'play') toast('♪ ' + audio.currentTitle(), 1600); };
   window.addEventListener('pointerdown', () => { audio.unlock(); setTimeout(updateMusicBtn, 200); }, { once: true });
   window.addEventListener('resize', () => { if (app.screen === 'home') app.home.layout(); });
 
