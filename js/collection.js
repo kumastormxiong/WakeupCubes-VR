@@ -1,5 +1,5 @@
 // 生态收藏室：环形展台展示所有已唤醒的小伙伴
-import * as THREE from 'three';
+import * as THREE from '../vendor/three.module.js';
 import { VoxelModel } from './voxel.js';
 
 const PED_COLORS = ['#FFC4D6', '#FFE680', '#B8F2C9', '#A0E7FF', '#D7C4F5', '#FFD3B6'];

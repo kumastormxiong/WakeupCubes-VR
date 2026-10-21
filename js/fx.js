@@ -1,5 +1,5 @@
 // 粒子特效：碎块、彩纸、Zzz
-import * as THREE from 'three';
+import * as THREE from '../vendor/three.module.js';
 
 const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _e = new THREE.Euler(), _s = new THREE.Vector3(), _c = new THREE.Color();
 

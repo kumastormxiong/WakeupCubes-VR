@@ -1,5 +1,5 @@
 // 体素渲染核心：数字图集、圆角方块材质、提示计算、网格射线、可动画的体素模型
-import * as THREE from 'three';
+import * as THREE from '../vendor/three.module.js';
 import { RoundedBoxGeometry } from '../vendor/addons/RoundedBoxGeometry.js';
 import { EYE_COLORS } from './palette.js';
 

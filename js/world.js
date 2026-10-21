@@ -1,5 +1,5 @@
 // 3D 世界：渲染器、天空岛环境、相机/轨道控制、鼠标/触摸拾取、WebXR（Quest）手柄
-import * as THREE from 'three';
+import * as THREE from '../vendor/three.module.js';
 import { OrbitControls } from '../vendor/addons/OrbitControls.js';
 import { THEMES } from './palette.js';
 import { setAmbient } from './voxel.js';

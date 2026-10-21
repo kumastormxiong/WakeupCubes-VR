@@ -204,6 +204,7 @@ class AudioSystem {
   setScene(scene) {
     if (this.scene === scene) return;
     this.scene = scene;
+    if (this.el) this.el.loop = scene === 'play';
     if (!this.ready || !this.musicOn) return;
     const cur = this.tracks[this.trackIdx];
     if (this.tracks.length && cur && !this.allowed(cur)) this.nextTrack(true);
@@ -238,6 +239,7 @@ class AudioSystem {
         });
       }
       this.el.src = t.file;
+      this.el.loop = this.scene === 'play';
       this.el.volume = Math.min(1, this.bgmVol);
       this.el.play().catch(() => {});
     };
@@ -331,7 +333,8 @@ class AudioSystem {
     const tick = () => {
       while (next < ctx.currentTime + 0.4) {
         const barN = Math.floor(step / song.len);
-        if (barN >= maxBars) { this.startProc((songIdx + 1) % this.songs.length); return; }
+        // 关卡里一直循环同一首；在首页等其他场景才会轮换
+        if (barN >= maxBars && this.scene !== 'play') { this.startProc((songIdx + 1) % this.songs.length); return; }
         const ch = song.chords[barN % song.chords.length];
         song.step(step % song.len, ch, next - ctx.currentTime, bus, eighth);
         step++;

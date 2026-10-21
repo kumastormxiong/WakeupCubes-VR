@@ -509,7 +509,7 @@ function buildCreatorUI() {
   });
   ['#crW', '#crH', '#crD'].forEach(sel => {
     const s = $(sel);
-    for (let n = 5; n <= 12; n++) s.insertAdjacentHTML('beforeend', `<option value="${n}">${n}</option>`);
+    for (let n = 3; n <= 12; n++) s.insertAdjacentHTML('beforeend', `<option value="${n}">${n}</option>`);
     s.onchange = () => { cr.resize(+$('#crW').value, +$('#crH').value, +$('#crD').value); syncCreatorUI(); };
   });
   $$('[data-crtool]').forEach(b => b.onclick = () => { setCrTool(b.dataset.crtool); audio.play('click'); });
@@ -933,7 +933,7 @@ function onVRPress(id) {
   else if (id === 'credo') cr.redo();
   else if (id === 'cclear') cr.clear();
   else if (id.startsWith('csize:')) {
-    const n = Math.max(5, Math.min(12, Math.max(cr.doc.w, cr.doc.h, cr.doc.d) + +id.slice(6)));
+    const n = Math.max(3, Math.min(12, Math.max(cr.doc.w, cr.doc.h, cr.doc.d) + +id.slice(6)));
     cr.resize(n, n, n);
     app.world.applyLayout();
   } else if (id === 'ctpl') {

@@ -1,5 +1,5 @@
 // UGC 造物工坊：在 3D 网格中搭建体素、上色、指定动作部件、预览唤醒、试玩、发布分享
-import * as THREE from 'three';
+import * as THREE from '../vendor/three.module.js';
 import { gridRaycast, rayToGrid, makeVoxelMaterial, getBlockGeometry, VoxelModel, BLOCK } from './voxel.js';
 import { PALETTE, PARTS } from './palette.js';
 import { RoundedBoxGeometry } from '../vendor/addons/RoundedBoxGeometry.js';

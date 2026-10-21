@@ -1,5 +1,5 @@
 // 首页 3D 背景：小岛上的吉祥物 + 一圈沉睡的方块
-import * as THREE from 'three';
+import * as THREE from '../vendor/three.module.js';
 import { VoxelModel, makeVoxelMaterial, getBlockGeometry } from './voxel.js';
 
 export class HomeMode {
