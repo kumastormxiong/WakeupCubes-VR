@@ -1,0 +1,9 @@
+{
+  "说明": "把 Suno 生成的 mp3 放进 music/ 文件夹，然后在 tracks 里登记。scenes 可选：home 首页 / play 游戏中 / creator 工坊 / collection 收藏室 / any 任意。tracks 为空时会自动寻找 bgm1.mp3 ~ bgm8.mp3；都没有则播放内置八音盒摇篮曲。",
+  "示例": [
+    { "file": "bgm1.mp3", "title": "清晨的方块岛", "scenes": ["home", "collection"] },
+    { "file": "bgm2.mp3", "title": "敲敲打打", "scenes": ["play"] },
+    { "file": "bgm3.mp3", "title": "造物小工坊", "scenes": ["creator"] }
+  ],
+  "tracks": []
+}

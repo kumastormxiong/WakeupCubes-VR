@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>醒醒吧！方块 · Wake Up, Cubes!</title>
+<meta name="description" content="一款清新可爱的 3D 体素解谜游戏：根据方块上的数字敲掉多余的方块，唤醒沉睡的小伙伴。支持网页、手机和 Quest VR，还能自己创造关卡分享给朋友。">
+<meta name="theme-color" content="#FFC8DD">
+<meta property="og:title" content="醒醒吧！方块 · Wake Up, Cubes!">
+<meta property="og:description" content="敲掉多余的方块，唤醒沉睡的小伙伴。网页 / 手机 / VR 都能玩。">
+<meta property="og:image" content="assets/og.png">
+<link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="assets/icon-192.png">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700;800&family=ZCOOL+KuaiLe&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+<script type="importmap">{ "imports": { "three": "./vendor/three.module.js" } }</script>
+</head>
+<body>
+<div id="gl"></div>
+
+<!-- 加载 -->
+<div id="loading">
+  <div class="load-cube"><i></i><i></i></div>
+  <p>正在叫醒方块…</p>
+</div>
+
+<div id="ui">
+  <!-- ========== 首页 ========== -->
+  <section id="scr-home" class="screen">
+    <header class="topbar">
+      <div class="chip progress-chip"><span data-ic="star"></span><b id="homeProgress">0/10</b> 已唤醒</div>
+      <div class="row">
+        <button class="icon-btn" id="btnMusic" title="背景音乐" aria-label="背景音乐"></button>
+        <button class="pill-btn soft" id="btnAdmin" data-ic="gear">后台管理</button>
+      </div>
+    </header>
+    <div class="home-main">
+      <h1 class="logo" aria-label="醒醒吧！方块">
+        <span>醒</span><span>醒</span><span>吧</span><span>！</span><span>方</span><span>块</span>
+      </h1>
+      <div class="logo-en">Wake Up, Cubes!</div>
+      <p class="tagline">看数字、敲方块，把沉睡的小伙伴叫醒吧</p>
+      <div class="home-actions">
+        <button class="big-btn pink" id="btnStart" data-ic="play">开始游戏</button>
+        <button class="big-btn yellow" id="btnCreate" data-ic="sparkle">创造关卡</button>
+      </div>
+      <div class="home-sub">
+        <button class="pill-btn" id="btnCollection" data-ic="gift">收藏室</button>
+        <button class="pill-btn" id="btnCode" data-ic="link">输入关卡码</button>
+        <button class="pill-btn" id="btnHowto" data-ic="help">玩法</button>
+        <button class="pill-btn vr-btn hidden" id="btnHomeVR" data-ic="vr">VR 模式</button>
+      </div>
+    </div>
+    <footer class="home-foot"><span id="nowPlaying"></span></footer>
+  </section>
+
+  <!-- ========== 关卡选择 ========== -->
+  <section id="scr-levels" class="screen hidden">
+    <header class="topbar">
+      <button class="icon-btn" data-back="home" data-ic="back" aria-label="返回"></button>
+      <div class="tabs" id="levelTabs">
+        <button class="tab active" data-tab="official">官方关卡</button>
+        <button class="tab" data-tab="custom">玩家关卡</button>
+      </div>
+      <button class="pill-btn soft" id="btnLevelsCreate" data-ic="plus">新建</button>
+    </header>
+    <div class="scroll-area">
+      <div class="level-grid" id="levelGrid"></div>
+      <div class="empty hidden" id="levelEmpty">
+        <div class="sleepy-cube big"><i class="eye l"></i><i class="eye r"></i><i class="mouth"></i></div>
+        <p>还没有玩家关卡哦～<br>去造物工坊做一个，或者输入朋友分享的关卡码吧！</p>
+        <div class="row center"><button class="pill-btn pink" id="btnEmptyCreate" data-ic="sparkle">去创造</button><button class="pill-btn" id="btnEmptyCode" data-ic="link">输入关卡码</button></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== 游戏 HUD ========== -->
+  <section id="scr-play" class="screen hidden">
+    <header class="topbar play-top">
+      <button class="icon-btn" id="btnPlayBack" data-ic="back" aria-label="返回"></button>
+      <div class="glass play-title">
+        <div class="lv-name" id="playName">Lv.1</div>
+        <div class="lv-meta"><span id="playDims">5×5×5</span><span class="dot">·</span><span data-ic="clock"></span><span id="playTime">00:00</span></div>
+      </div>
+      <div class="glass hearts" id="playHearts"></div>
+      <div class="glass remain"><small>还要敲</small><b id="playRemain">0</b></div>
+    </header>
+    <div class="play-side">
+      <button class="icon-btn" id="btnHelp" data-ic="help" title="玩法说明"></button>
+      <button class="icon-btn" id="btnRestart" data-ic="restart" title="重新开始"></button>
+      <button class="icon-btn vr-btn hidden" id="btnPlayVR" data-ic="vr" title="进入 VR"></button>
+    </div>
+    <div class="play-bottom">
+      <div class="glass slicers" id="slicers">
+        <div class="slicer" data-axis="0"><label class="ax x">X</label><input type="range" min="0" max="4" value="0" step="1"><span class="sv">0</span></div>
+        <div class="slicer" data-axis="1"><label class="ax y">Y</label><input type="range" min="0" max="4" value="0" step="1"><span class="sv">0</span></div>
+        <div class="slicer" data-axis="2"><label class="ax z">Z</label><input type="range" min="0" max="4" value="0" step="1"><span class="sv">0</span></div>
+      </div>
+      <div class="glass toolswitch" id="toolSwitch">
+        <button class="tool active" data-tool="break" data-ic="hammer"><span>敲除</span></button>
+        <button class="tool" data-tool="protect" data-ic="shield"><span>保护</span></button>
+      </div>
+    </div>
+    <div class="hint-bubble" id="playHint">点击敲掉多余方块 · 右键/长按 保护</div>
+
+    <!-- 结算卡片 -->
+    <div class="result hidden" id="resultCard">
+      <div class="result-inner glass">
+        <div class="result-title" id="resultTitle">唤醒成功！</div>
+        <div class="result-stars" id="resultStars"></div>
+        <div class="result-stats" id="resultStats"></div>
+        <div class="result-actions" id="resultActions"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== 收藏室 ========== -->
+  <section id="scr-collection" class="screen hidden">
+    <header class="topbar">
+      <button class="icon-btn" data-back="home" data-ic="back" aria-label="返回"></button>
+      <div class="glass coll-title"><b>生态收藏室</b><small id="collCount">0 位小伙伴</small></div>
+      <button class="icon-btn vr-btn hidden" id="btnCollVR" data-ic="vr" title="在 VR 中参观"></button>
+    </header>
+    <div class="coll-bottom">
+      <button class="icon-btn" id="collPrev" data-ic="back"></button>
+      <div class="glass coll-info" id="collInfo">点击小伙伴和它互动～</div>
+      <button class="icon-btn flip" id="collNext" data-ic="back"></button>
+    </div>
+    <div class="empty floating hidden" id="collEmpty">
+      <div class="sleepy-cube big"><i class="eye l"></i><i class="eye r"></i><i class="mouth"></i></div>
+      <p>收藏室还空空的～<br>唤醒的小伙伴都会住进这里！</p>
+      <button class="pill-btn pink" id="btnCollGo" data-ic="play">去唤醒第一位</button>
+    </div>
+  </section>
+
+  <!-- ========== 造物工坊 ========== -->
+  <section id="scr-creator" class="screen hidden">
+    <header class="topbar creator-top">
+      <button class="icon-btn" id="crBack" data-ic="back" aria-label="返回"></button>
+      <div class="glass cr-namebox">
+        <input id="crName" maxlength="16" placeholder="给关卡起个名字">
+        <div class="cr-dims">
+          <label>宽<select id="crW"></select></label>
+          <label>高<select id="crH"></select></label>
+          <label>深<select id="crD"></select></label>
+        </div>
+      </div>
+      <div class="row cr-top-actions">
+        <button class="pill-btn soft" id="crTemplate" data-ic="layers">模板</button>
+        <button class="pill-btn soft" id="crTest" data-ic="play">试玩</button>
+        <button class="pill-btn pink" id="crPublish" data-ic="share">发布分享</button>
+      </div>
+    </header>
+
+    <aside class="glass cr-tools" id="crTools">
+      <button class="tool active" data-crtool="add" data-ic="plus"><span>添加</span></button>
+      <button class="tool" data-crtool="erase" data-ic="eraser"><span>擦除</span></button>
+      <button class="tool" data-crtool="paint" data-ic="brush"><span>上色</span></button>
+      <button class="tool" data-crtool="pick" data-ic="picker"><span>吸管</span></button>
+      <hr>
+      <button class="tool toggle" id="crMirror" data-ic="mirror"><span>镜像</span></button>
+      <button class="tool toggle" id="crShowParts" data-ic="layers"><span>看部件</span></button>
+      <hr>
+      <button class="tool" id="crUndo" data-ic="undo"><span>撤销</span></button>
+      <button class="tool" id="crRedo" data-ic="redo"><span>重做</span></button>
+      <button class="tool" id="crFloor" data-ic="grid"><span>铺底</span></button>
+      <button class="tool" id="crClear" data-ic="trash"><span>清空</span></button>
+    </aside>
+
+    <aside class="glass cr-side" id="crSide">
+      <div class="cr-sec-title">颜色</div>
+      <div class="palette" id="crPalette"></div>
+      <div class="cr-sec-title">动作部件 <small>唤醒后怎么动</small></div>
+      <div class="parts" id="crParts"></div>
+      <button class="big-btn mint small" id="crPreview" data-ic="sparkle">预览唤醒动画</button>
+      <div class="cr-stats" id="crStats">0 个方块</div>
+    </aside>
+    <div class="hint-bubble" id="crHint">点击放方块 · 右键/长按 擦除 · 拖动旋转</div>
+  </section>
+
+  <!-- ========== 后台管理 ========== -->
+  <section id="scr-admin" class="screen hidden">
+    <header class="topbar">
+      <button class="icon-btn" data-back="home" data-ic="back" aria-label="返回"></button>
+      <div class="glass coll-title"><b>后台管理</b><small>游戏设置 · 关卡库</small></div>
+      <span></span>
+    </header>
+    <div class="scroll-area admin">
+      <div class="admin-grid">
+        <section class="glass card">
+          <h2 data-ic="gear">游戏全局配置</h2>
+          <div class="form">
+            <label class="field"><span>初始生命值</span>
+              <div class="stepper"><button data-step="-1">−</button><b id="cfgLives">3</b><button data-step="1">+</button></div></label>
+            <label class="field"><span>休闲模式 <small>敲错不扣血</small></span>
+              <input type="checkbox" class="switch" id="cfgCasual"></label>
+            <label class="field"><span>动画速度 <small id="cfgSpeedV">1.0×</small></span>
+              <input type="range" id="cfgSpeed" min="0.25" max="3" step="0.25"></label>
+            <label class="field"><span>音效音量</span><input type="range" id="cfgSfx" min="0" max="1" step="0.05"></label>
+            <label class="field"><span>音乐音量</span><input type="range" id="cfgBgm" min="0" max="1" step="0.05"></label>
+            <label class="field"><span>玩家昵称 <small>分享时显示</small></span><input type="text" id="cfgName" maxlength="12" placeholder="可不填"></label>
+            <div class="field col"><span>场景主题</span><div class="themes" id="cfgThemes"></div></div>
+          </div>
+        </section>
+        <section class="glass card">
+          <h2 data-ic="music">背景音乐</h2>
+          <p class="note">把 Suno 生成的 mp3 放进网站的 <code>music/</code> 文件夹，命名为 <code>bgm1.mp3</code>、<code>bgm2.mp3</code>…（最多 8 首）就会自动轮播；也可以在 <code>music/playlist.json</code> 里写曲名并指定在哪个场景播放。没有放音乐时会播放内置的八音盒摇篮曲。</p>
+          <div class="now" id="adminNow"></div>
+          <div class="row"><button class="pill-btn" id="adminNextTrack" data-ic="music">切换下一首</button></div>
+          <h2 data-ic="star" class="mt">数据</h2>
+          <div class="stats" id="adminStats"></div>
+          <div class="row wrap">
+            <button class="pill-btn" id="adminResetProgress" data-ic="restart">清空通关记录</button>
+            <button class="pill-btn" id="adminResetLevels" data-ic="trash">恢复默认关卡库</button>
+          </div>
+        </section>
+        <section class="glass card wide">
+          <div class="card-head">
+            <h2 data-ic="layers">关卡库管理</h2>
+            <div class="row wrap">
+              <button class="pill-btn" id="adminNew" data-ic="plus">新建关卡</button>
+              <button class="pill-btn" id="adminExport" data-ic="download">导出 JSON</button>
+              <label class="pill-btn" data-ic="upload">导入 JSON<input type="file" id="adminImport" accept=".json,application/json" hidden></label>
+            </div>
+          </div>
+          <p class="note">这里的修改保存在当前浏览器。想让所有玩家都看到：点「导出 JSON」，把文件改名为 <code>game-pack.json</code> 放进网站的 <code>data/</code> 文件夹再上传即可。</p>
+          <div class="level-table" id="adminTable"></div>
+        </section>
+      </div>
+    </div>
+  </section>
+</div>
+
+<div id="modal" class="modal hidden" role="dialog" aria-modal="true">
+  <div class="modal-card glass">
+    <button class="icon-btn modal-x" data-ic="close" aria-label="关闭"></button>
+    <div class="modal-title"></div>
+    <div class="modal-body"></div>
+    <div class="modal-actions"></div>
+  </div>
+</div>
+<div id="toast"></div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
