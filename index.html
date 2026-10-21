@@ -2,13 +2,18 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
+<script>
+  // 访问 /cube（没有结尾斜杠）时补上斜杠，保证相对路径正确
+  (function () { var p = location.pathname; if (!/\/$/.test(p) && !/\.[a-z0-9]+$/i.test(p)) location.replace(p + '/' + location.search + location.hash); })();
+</script>
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <title>醒醒吧！方块 · Wake Up, Cubes!</title>
 <meta name="description" content="一款清新可爱的 3D 体素解谜游戏：根据方块上的数字敲掉多余的方块，唤醒沉睡的小伙伴。支持网页、手机和 Quest VR，还能自己创造关卡分享给朋友。">
 <meta name="theme-color" content="#FFC8DD">
 <meta property="og:title" content="醒醒吧！方块 · Wake Up, Cubes!">
 <meta property="og:description" content="敲掉多余的方块，唤醒沉睡的小伙伴。网页 / 手机 / VR 都能玩。">
-<meta property="og:image" content="assets/og.png">
+<meta property="og:image" content="https://ffvoid.com/cube/assets/og.png">
+<meta property="og:url" content="https://ffvoid.com/cube/">
 <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="assets/icon-192.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -34,7 +39,7 @@
       <div class="chip progress-chip"><span data-ic="star"></span><b id="homeProgress">0/10</b> 已唤醒</div>
       <div class="row">
         <button class="icon-btn" id="btnMusic" title="背景音乐" aria-label="背景音乐"></button>
-        <button class="pill-btn soft" id="btnAdmin" data-ic="gear">后台管理</button>
+        <button class="pill-btn soft" id="btnAdmin" data-ic="gear"><span class="dev-hide">设置</span><span class="dev-only">后台管理</span></button>
       </div>
     </header>
     <div class="home-main">
@@ -186,17 +191,17 @@
   <section id="scr-admin" class="screen hidden">
     <header class="topbar">
       <button class="icon-btn" data-back="home" data-ic="back" aria-label="返回"></button>
-      <div class="glass coll-title"><b>后台管理</b><small>游戏设置 · 关卡库</small></div>
+      <div class="glass coll-title"><b class="dev-hide">设置</b><b class="dev-only">后台管理</b><small class="dev-hide">音量 · 主题 · 昵称</small><small class="dev-only">开发者模式</small></div>
       <span></span>
     </header>
     <div class="scroll-area admin">
       <div class="admin-grid">
         <section class="glass card">
-          <h2 data-ic="gear">游戏全局配置</h2>
+          <h2 data-ic="gear">游戏设置</h2>
           <div class="form">
-            <label class="field"><span>初始生命值</span>
+            <label class="field dev-only"><span>初始生命值</span>
               <div class="stepper"><button data-step="-1">−</button><b id="cfgLives">3</b><button data-step="1">+</button></div></label>
-            <label class="field"><span>休闲模式 <small>敲错不扣血</small></span>
+            <label class="field dev-only"><span>休闲模式 <small>敲错不扣血</small></span>
               <input type="checkbox" class="switch" id="cfgCasual"></label>
             <label class="field"><span>动画速度 <small id="cfgSpeedV">1.0×</small></span>
               <input type="range" id="cfgSpeed" min="0.25" max="3" step="0.25"></label>
@@ -208,17 +213,17 @@
         </section>
         <section class="glass card">
           <h2 data-ic="music">背景音乐</h2>
-          <p class="note">把 Suno 生成的 mp3 放进网站的 <code>music/</code> 文件夹，命名为 <code>bgm1.mp3</code>、<code>bgm2.mp3</code>…（最多 8 首）就会自动轮播；也可以在 <code>music/playlist.json</code> 里写曲名并指定在哪个场景播放。没有放音乐时会播放内置的八音盒组曲（约 2 分 50 秒一轮）。</p>
+          <p class="note dev-only">把 Suno 生成的 mp3 放进网站的 <code>music/</code> 文件夹，命名为 <code>bgm1.mp3</code>、<code>bgm2.mp3</code>…（最多 8 首）就会自动轮播；也可以在 <code>music/playlist.json</code> 里写曲名并指定在哪个场景播放。没有放音乐时会播放内置的八音盒摇篮曲。</p>
           <div class="now" id="adminNow"></div>
           <div class="row"><button class="pill-btn" id="adminNextTrack" data-ic="music">切换下一首</button></div>
-          <h2 data-ic="star" class="mt">数据</h2>
+          <h2 data-ic="star" class="mt">我的进度</h2>
           <div class="stats" id="adminStats"></div>
           <div class="row wrap">
             <button class="pill-btn" id="adminResetProgress" data-ic="restart">清空通关记录</button>
-            <button class="pill-btn" id="adminResetLevels" data-ic="trash">恢复默认关卡库</button>
+            <button class="pill-btn dev-only" id="adminResetLevels" data-ic="trash">恢复默认关卡库</button>
           </div>
         </section>
-        <section class="glass card wide">
+        <section class="glass card wide dev-only">
           <div class="card-head">
             <h2 data-ic="layers">关卡库管理</h2>
             <div class="row wrap">

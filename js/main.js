@@ -321,25 +321,46 @@ function leavePlay() {
 }
 
 // ---------- 分享 ----------
-async function shareResult(entry, result) {
+// 分享前先问一下玩家名字（会显示在分享图上）
+function shareResult(entry, result) {
+  const cur = store.config.playerName || '';
+  // 设置里已经填过名字，就不再询问
+  if (cur) { buildShare(entry, result, cur); return; }
+  modal({
+    title: result && result.ok ? '分享你的战绩 ✨' : '分享这个关卡',
+    html: `<p>写上你的名字，朋友就知道是谁发来的挑战啦（可不填）：</p>
+      <input class="txt" id="shareName" maxlength="12" placeholder="你的名字" value="${esc(cur)}">`,
+    actions: [
+      { label: '不写名字', onClick: () => { setTimeout(() => buildShare(entry, result, ''), 50); } },
+      { label: '生成分享图', cls: 'pink', ic: 'share', onClick: () => {
+        const n = ($('#shareName').value || '').trim().slice(0, 12);
+        if (n !== cur) store.setConfig({ playerName: n });
+        setTimeout(() => buildShare(entry, result, n), 50);
+      } },
+    ],
+    onOpen: () => setTimeout(() => { const i = $('#shareName'); if (i && !matchMedia('(pointer: coarse)').matches) i.focus(); }, 100),
+  });
+}
+
+async function buildShare(entry, result, player) {
   toast('正在生成分享图…', 1200);
   const idx = officialIndex(entry);
-  // 官方关卡：短链接 ?lv=，二维码很简单；玩家关卡：二维码只放网址，关卡码放在文字里
-  const qrUrl = idx ? siteUrl() + '?lv=' + entry.id : siteUrl();
-  let link = qrUrl, code = '';
+  // 官方关卡：?lv= 短链接；玩家关卡：关卡码直接压进二维码（纯数字，极致压缩）
+  let link = siteUrl() + '?lv=' + entry.id, code = '';
   if (!idx) {
-    try { code = await encodeLevel(entry); link = shareLink(code); } catch (e) { /* 用首页 */ }
+    try { code = await encodeLevel(entry); link = shareLink(code); } catch (e) { link = siteUrl(); }
   }
-  const cv = await makeShareCard({ entry, result, qrUrl, index: idx });
+  const cv = await makeShareCard({ entry, result, qrUrl: link, index: idx, player });
   const url = cv.toDataURL('image/png');
   audio.play('share');
+  const who = player || '我';
   const head = result && result.ok
-    ? `我在《${CONFIG.GAME_NAME}》里用 ${fmtTime(result.time)} 叫醒了一个小伙伴，快来唤醒它吧！`
-    : `《${CONFIG.GAME_NAME}》里有个方块在等你唤醒，快来试试！`;
-  const text = head + (code ? `\n关卡码：${code}` : '');
+    ? `${who}在《${CONFIG.GAME_NAME}》里用 ${fmtTime(result.time)} 叫醒了一个小伙伴，快来唤醒它吧！`
+    : `${player ? player + '邀请你' : ''}来《${CONFIG.GAME_NAME}》唤醒一个沉睡的方块吧！`;
+  const text = head;
   modal({
     title: '分享给朋友',
-    html: `<img class="share-img" src="${url}" alt="分享图"><p style="font-size:13px;color:var(--ink-soft)">分享图只展示还没唤醒的谜题方块，不会剧透。手机上可以长按图片保存。</p>`,
+    html: `<img class="share-img" src="${url}" alt="分享图"><p style="font-size:13px;color:var(--ink-soft)">分享图只展示还没唤醒的谜题方块，不会剧透；扫二维码就能直接玩这一关。手机上可以长按图片保存。</p>`,
     actions: [
       { label: '复制链接', ic: 'link', onClick: () => { copyText(head + '\n' + link); return false; } },
       { label: '保存图片', ic: 'download', onClick: async () => { downloadBlob(await canvasToBlob(cv), `wakeup-cubes-${Date.now()}.png`); return false; } },
@@ -605,7 +626,9 @@ function renderAdmin() {
   $('#cfgThemes').innerHTML = Object.entries(THEMES).map(([k, t]) =>
     `<button class="theme ${cfg.theme === k ? 'active' : ''}" data-theme="${k}" style="background:linear-gradient(180deg,${t.skyTop},${t.skyBottom});color:${k === 'night' ? '#fff' : 'var(--ink)'}">${t.name}</button>`).join('');
   $$('#cfgThemes .theme').forEach(b => b.onclick = () => { store.setConfig({ theme: b.dataset.theme }); applyTheme(b.dataset.theme); audio.play('click'); renderAdmin(); });
-  $('#adminNow').textContent = '正在播放：' + (store.config.music ? (audio.currentTitle() || '（点击页面后开始播放）') : '音乐已关闭') + (audio.tracks.length ? `（共 ${audio.tracks.length} 首）` : '（未找到 music/ 曲目，使用内置八音盒）');
+  const dev = document.body.classList.contains('dev');
+  $('#adminNow').textContent = '正在播放：' + (store.config.music ? (audio.currentTitle() || '（点击页面后开始播放）') : '音乐已关闭')
+    + (dev ? (audio.tracks.length ? `（共 ${audio.tracks.length} 首）` : '（未找到 music/ 曲目，使用内置八音盒）') : '');
   const lv = store.levels();
   const done = store.completedIds().length;
   const stars = Object.values(store.data.progress).reduce((a, p) => a + (p.stars || 0), 0);
@@ -666,7 +689,7 @@ function bindAdmin() {
     audio.unlock();
     if (!store.config.music) { store.setConfig({ music: true }); audio.setMusic(true); }
     else if (audio.tracks.length) audio.nextTrack(true);
-    else toast('还没有放 Suno 曲目，正在播放内置八音盒');
+    else toast(document.body.classList.contains('dev') ? '还没有放 Suno 曲目，正在播放内置八音盒' : '当前只有这一首曲子～');
     setTimeout(renderAdmin, 300);
   };
   $('#adminResetProgress').onclick = () => modal({ title: '清空通关记录？', html: '<p>所有星星和收藏室里的小伙伴都会重新睡着。</p>', actions: [{ label: '取消' }, { label: '清空', cls: 'pink', onClick: () => { store.resetProgress(); renderAdmin(); toast('通关记录已清空'); } }] });
@@ -932,6 +955,13 @@ async function enterVR() {
 // ---------- 启动 ----------
 async function boot() {
   hydrateIcons();
+  // 开发者模式：打开 ?dev=1 开启（只在当前浏览器生效），?dev=0 关闭
+  try {
+    const dv = new URLSearchParams(location.search).get('dev');
+    if (dv === '1') localStorage.setItem('wakeupcubes.dev', '1');
+    if (dv === '0') localStorage.removeItem('wakeupcubes.dev');
+    document.body.classList.toggle('dev', localStorage.getItem('wakeupcubes.dev') === '1');
+  } catch (e) { /* */ }
   const fontWait = Promise.race([
     Promise.all([
       document.fonts.load('800 64px "Baloo 2"'),
@@ -1019,8 +1049,9 @@ async function boot() {
 
   // 打开分享链接
   const params = new URLSearchParams(location.search);
-  const share = params.get('share');
+  const share = params.get('c') || params.get('share');
   const lvParam = params.get('lv');
+  if (params.has('dev')) history.replaceState(null, '', location.pathname);
   if (lvParam && store.getLevel(lvParam)) {
     history.replaceState(null, '', location.pathname);
     setTimeout(() => startLevel(store.getLevel(lvParam), { from: 'home' }), 300);

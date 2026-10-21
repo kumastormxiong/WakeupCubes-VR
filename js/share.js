@@ -106,8 +106,14 @@ export function fmtTime(sec) {
 }
 
 function drawQR(g, text, x, y, size) {
+  // 关卡码是纯数字：网址部分用字节模式，数字部分用数字模式，二维码更简单
   let qr;
-  try { qr = qrcode(0, 'L'); qr.addData(text); qr.make(); } catch (e) {
+  try {
+    qr = qrcode(0, 'L');
+    const m = text.match(/^(.*[?&]c=)(\d+)$/);
+    if (m) { qr.addData(m[1], 'Byte'); qr.addData(m[2], 'Numeric'); } else qr.addData(text);
+    qr.make();
+  } catch (e) {
     qr = qrcode(0, 'L'); qr.addData(siteUrl()); qr.make();
   }
   const n = qr.getModuleCount();
@@ -146,7 +152,7 @@ export function drawLogoTiles(g, text, cx, cy, tile, fontPx) {
   });
 }
 
-export async function makeShareCard({ entry, result, qrUrl, index }) {
+export async function makeShareCard({ entry, result, qrUrl, index, player = '' }) {
   try { await document.fonts.ready; } catch (e) { /* */ }
   const W = 1080, H = 1440;
   const cv = document.createElement('canvas');
@@ -211,39 +217,43 @@ export async function makeShareCard({ entry, result, qrUrl, index }) {
   g.font = '38px "ZCOOL KuaiLe", "PingFang SC", sans-serif';
   const sub = index ? `Lv.${index} · ${dims} 神秘小伙伴` : `「${entry.name}」${entry.author ? ' by ' + entry.author : ''} · ${dims}`;
   g.fillText(sub, W / 2, 1060);
+  const who = player ? `「${player}」` : '我';
   if (result && result.ok) {
     const y = 1112;
-    for (let i = 0; i < 3; i++) star(g, W / 2 - 300 + i * 50, y, 20, i < result.stars ? '#FFC93C' : '#E8E1F2');
     g.font = '34px "ZCOOL KuaiLe", "Baloo 2", sans-serif';
+    const msg = `${who}用 ${fmtTime(result.time)} 叫醒了它，你也来试试！`;
+    const tw = g.measureText(msg).width;
+    const x0 = W / 2 - (tw + 170) / 2;
+    for (let i = 0; i < 3; i++) star(g, x0 + 22 + i * 50, y, 20, i < result.stars ? '#FFC93C' : '#E8E1F2');
     g.fillStyle = '#7A6E99';
     g.textAlign = 'left';
-    g.fillText(`我用 ${fmtTime(result.time)} 叫醒了它，你也来试试！`, W / 2 - 160, y + 2);
+    g.fillText(msg, x0 + 170, y + 2);
     g.textAlign = 'center';
   } else {
     g.font = '32px "ZCOOL KuaiLe", sans-serif';
     g.fillStyle = '#7A6E99';
-    g.fillText('看数字敲方块，把它叫醒就知道它是谁啦～', W / 2, 1112);
+    g.fillText(player ? `${who}邀请你来挑战，把它叫醒就知道它是谁啦～` : '看数字敲方块，把它叫醒就知道它是谁啦～', W / 2, 1112);
   }
 
   // 底部：网址 + 简洁二维码
   const url = qrUrl || siteUrl();
-  rr(g, 70, 1180, W - 140, 220, 44);
+  rr(g, 70, 1168, W - 140, 252, 44);
   g.fillStyle = 'rgba(255,255,255,0.85)'; g.fill();
   g.textAlign = 'left';
   g.fillStyle = '#5A4A86';
   g.font = '46px "ZCOOL KuaiLe", sans-serif';
-  g.fillText(index ? '扫码直接挑战这一关' : '扫码来玩', 116, 1240);
+  g.fillText(url !== siteUrl() ? '扫码直接挑战这一关' : '扫码来玩', 112, 1236);
   g.font = '28px "ZCOOL KuaiLe", "PingFang SC", sans-serif';
   g.fillStyle = '#8C7FB0';
-  g.fillText(index ? CONFIG.SHARE_SLOGAN : '进入后点「输入关卡码」，粘贴消息里的关卡码', 116, 1296);
-  g.font = '700 30px "Baloo 2", sans-serif';
+  g.fillText(CONFIG.SHARE_SLOGAN, 112, 1294);
+  g.font = '700 32px "Baloo 2", sans-serif';
   g.fillStyle = '#FF6F9C';
   let shown = siteUrl().replace(/^https?:\/\//, '').replace(/\/$/, '');
-  if (shown.length > 34) shown = shown.slice(0, 33) + '…';
-  g.fillText(shown, 116, 1350);
+  if (shown.length > 30) shown = shown.slice(0, 29) + '…';
+  g.fillText(shown, 112, 1356);
   g.fillStyle = '#fff';
-  rr(g, W - 312, 1186, 208, 208, 22); g.fill();
-  drawQR(g, url, W - 300, 1198, 184);
+  rr(g, W - 338, 1180, 228, 228, 22); g.fill();
+  drawQR(g, url, W - 322, 1196, 196);
   return cv;
 }
 

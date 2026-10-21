@@ -361,9 +361,14 @@ input[type=range]::-moz-range-thumb { width: 18px; height: 18px; border-radius: 
   .level-grid { grid-template-columns: repeat(2, 1fr); gap: 12px; }
   .lvcard .thumb, .lvcard .thumb img { width: 92px; height: 92px; }
   .admin-grid { grid-template-columns: 1fr; }
-  .lrow { grid-template-columns: 28px 1fr auto; grid-template-areas: "i n a" "i m d"; }
+  .lrow { grid-template-columns: 26px 1fr auto; grid-template-areas: "i n n" "i m d" "a a a"; gap: 6px 8px; }
   .lrow img, .lrow .mini { display: none; }
-  .lrow .idx { grid-area: i; } .lrow .nm { grid-area: n; } .lrow .info { grid-area: m; } .lrow .dsel { grid-area: d; } .lrow .acts { grid-area: a; flex-wrap: wrap; justify-content: flex-end; }
+  .lrow .idx { grid-area: i; align-self: start; padding-top: 8px; }
+  .lrow .nm { grid-area: n; min-width: 0; }
+  .lrow > .info { grid-area: m; align-self: center; }
+  .lrow .dsel { grid-area: d; }
+  .lrow .acts { grid-area: a; flex-wrap: nowrap; justify-content: space-between; }
+  .lrow .acts button { width: 38px; height: 38px; }
   .creator-top { flex-wrap: wrap; }
   .cr-namebox { flex-direction: column; align-items: stretch; gap: 2px; padding: 4px 10px; }
   .cr-top-actions { width: 100%; justify-content: flex-end; }
@@ -387,3 +392,7 @@ input[type=range]::-moz-range-thumb { width: 18px; height: 18px; border-radius: 
   .home-main { gap: 4px; bottom: 14px; }
   .tagline { display: none; }
 }
+
+/* 开发者专用内容：只有 ?dev=1 打开开发者模式后才显示 */
+body:not(.dev) .dev-only { display: none !important; }
+body.dev .dev-hide { display: none !important; }

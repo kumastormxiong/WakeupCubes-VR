@@ -253,99 +253,33 @@ class AudioSystem {
 
   stopTrack() { if (this.el) { this.el.pause(); } }
 
-  // 程序化八音盒组曲（没有放 Suno 曲目时的默认 BGM）
-  // 结构：前奏 → A → B → A' → C(间奏) → B → A → 尾声，约 2 分 40 秒后才循环
+  // 程序化八音盒摇篮曲（没有放 Suno 曲目时的默认 BGM）
   startProc() {
     if (this.proc || !this.ctx) return;
     const ctx = this.ctx;
     const bus = ctx.createGain(); bus.gain.value = 0.0001; bus.connect(this.music);
     bus.gain.exponentialRampToValueAtTime(0.9, ctx.currentTime + 2);
-    const CH = {
-      C: [60, 64, 67, 71], Am: [57, 60, 64, 67], F: [53, 57, 60, 64], G: [55, 59, 62, 65],
-      Dm: [50, 53, 57, 60], Em: [52, 55, 59, 62], Fm: [53, 56, 60, 63], Gs: [55, 59, 62, 67],
-    };
-    const SEC = {
-      intro: { ch: ['C', 'F', 'C', 'G'], style: 'intro' },
-      A: { ch: ['C', 'Am', 'F', 'G', 'C', 'Am', 'Dm', 'G'], style: 'A', seed: 11 },
-      A2: { ch: ['C', 'Am', 'F', 'G', 'C', 'Am', 'Dm', 'Gs'], style: 'A', seed: 11, vary: 29 },
-      B: { ch: ['F', 'G', 'Em', 'Am', 'F', 'G', 'C', 'C'], style: 'B', seed: 47 },
-      C: { ch: ['Am', 'F', 'C', 'G', 'Am', 'F', 'Fm', 'G'], style: 'C', seed: 83 },
-      outro: { ch: ['F', 'G', 'C', 'C'], style: 'outro', seed: 5 },
-    };
-    const form = ['intro', 'A', 'B', 'A2', 'C', 'B', 'A', 'outro'];
-    const bars = [];
-    form.forEach(name => SEC[name].ch.forEach((c, i) => bars.push({ sec: SEC[name], name, chord: CH[c], i })));
-    const bpm = 80, eighth = 60 / bpm / 2;
-    const SCALE = [0, 2, 4, 5, 7, 9, 11];
-    const rng = (seed) => () => { seed |= 0; seed = (seed + 0x6D2B79F5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
-    const RHY = [[0, 2, 4, 6], [0, 3, 4], [0, 2, 3, 4, 6], [0, 4, 6], [0, 1, 2, 4], [0, 6]];
-    const melCache = new Map();
-    // 旋律：以 4 小节为乐句重复，靠近上一个音，强拍落在和弦音上
-    const melody = (bar) => {
-      const sec = bar.sec;
-      if (!sec.seed) return [];
-      let phraseBar = bar.i % 4;
-      let seed = sec.seed * 100 + phraseBar;
-      if (sec.vary && bar.i >= 4) seed += sec.vary;
-      if (bar.i >= 4 && phraseBar === 3) seed += 7; // 第二句结尾不同
-      const key = seed + ':' + bar.chord.join(',');
-      if (melCache.has(key)) return melCache.get(key);
-      const r = rng(seed);
-      const rhy = sec.style === 'C' ? [0, 4] : RHY[Math.floor(r() * (phraseBar === 3 ? 2 : RHY.length))];
-      const base = sec.style === 'B' ? 76 : 72;
-      let prev = base + 4;
-      const out = rhy.map((pos, k) => {
-        let n;
-        if (pos === 0 || pos === 4) {
-          const tones = bar.chord.map(c => { let x = c; while (x < base - 2) x += 12; while (x > base + 12) x -= 12; return x; });
-          tones.sort((a, b) => Math.abs(a - prev) - Math.abs(b - prev));
-          n = tones[Math.floor(r() * 2)];
-        } else {
-          const deg = SCALE.map(s => base - 12 + s).concat(SCALE.map(s => base + s), SCALE.map(s => base + 12 + s));
-          const near = deg.filter(d => Math.abs(d - prev) <= 4 && d !== prev);
-          n = near[Math.floor(r() * near.length)] || prev;
-        }
-        prev = n;
-        const nextPos = k + 1 < rhy.length ? rhy[k + 1] : 8;
-        return { pos, n, len: nextPos - pos };
-      });
-      melCache.set(key, out);
-      return out;
-    };
-    let barIdx = 0, step = 0, next = ctx.currentTime + 0.2;
+    const chords = [[60, 64, 67, 71], [57, 60, 64, 67], [53, 57, 60, 64], [55, 59, 62, 67], [60, 64, 67, 72], [57, 60, 64, 69], [53, 57, 60, 65], [55, 59, 62, 65]];
+    const bpm = 84, eighth = 60 / bpm / 2;
+    let step = 0, next = ctx.currentTime + 0.2;
+    const melodyPool = [0, 2, 4, 7, 9, 12];
     const tick = () => {
       while (next < ctx.currentTime + 0.4) {
-        const bar = bars[barIdx];
-        const st = bar.sec.style;
-        const ch = bar.chord;
+        const bar = Math.floor(step / 8) % chords.length;
+        const ch = chords[bar];
+        const pos = step % 8;
         const t = next - ctx.currentTime;
-        const pos = step;
-        const fade = st === 'outro' ? 1 - (bar.i / 4) * 0.5 : 1;
         if (pos === 0) {
-          const padVol = st === 'C' ? 0.065 : st === 'intro' ? 0.06 : 0.045;
-          ch.slice(0, 3).forEach(n => this.tone({ f: midi(n - 12), t, dur: eighth * 8.6, vol: padVol * fade, type: 'triangle', attack: 0.5, dest: bus, verb: 0.4 }));
+          // 柔和的垫音
+          ch.slice(0, 3).forEach(n => this.tone({ f: midi(n - 12), t, dur: eighth * 8.5, vol: 0.05, type: 'triangle', attack: 0.4, dest: bus, verb: 0.4 }));
         }
-        // 低音
-        if (st !== 'intro' && st !== 'C' && (pos === 0 || pos === 4)) {
-          this.tone({ f: midi(ch[0] - 24 + (pos === 4 && st === 'B' ? 7 : 0)), t, dur: eighth * 3.5, vol: 0.09 * fade, type: 'sine', attack: 0.02, dest: bus, verb: 0.1 });
-        }
-        // 琶音
-        const arpA = [0, 1, 2, 3, 2, 1, 2, 3];
-        const arpB = [0, 2, 1, 3, 0, 2, 1, 3];
-        if (st === 'intro') { if (pos % 2 === 0) this.musicbox(ch[(pos / 2) % 4] + 12, t, 0.06, 1.3, bus); }
-        else if (st === 'C') { if (pos === 0 || pos === 3 || pos === 6) this.musicbox(ch[pos % 4] + 12, t, 0.045, 1.8, bus); }
-        else {
-          const arp = st === 'B' ? arpB : arpA;
-          this.musicbox(ch[arp[pos]] + 12, t, (pos % 2 ? 0.045 : 0.065) * fade, 1.1, bus);
-        }
-        // 沙锤（B 段反拍）
-        if (st === 'B' && pos % 2 === 1) this.noise({ t, dur: 0.05, vol: 0.025, freq: 7000, q: 0.7, type: 'highpass', dest: bus });
-        // 旋律
-        for (const m of melody(bar)) {
-          if (m.pos === pos) this.musicbox(m.n, t + 0.005, (st === 'C' ? 0.075 : 0.085) * fade, Math.max(0.9, m.len * eighth * 1.6), bus);
+        const arp = [0, 1, 2, 3, 2, 1, 2, 3];
+        this.musicbox(ch[arp[pos]] + 12, t, pos % 2 ? 0.05 : 0.075, 1.1, bus);
+        if ((pos === 0 || pos === 3 || pos === 6) && Math.random() < 0.55) {
+          const m = 72 + melodyPool[Math.floor(Math.random() * melodyPool.length)];
+          this.musicbox(m, t + 0.01, 0.06, 1.6, bus);
         }
         step++;
-        if (step >= 8) { step = 0; barIdx = (barIdx + 1) % bars.length; }
         next += eighth;
       }
     };
@@ -366,7 +300,7 @@ class AudioSystem {
   currentTitle() {
     if (!this.musicOn) return '';
     if (this.tracks.length && this.trackIdx >= 0) return this.tracks[this.trackIdx].title;
-    return '方块岛八音盒组曲（内置）';
+    return '八音盒摇篮曲';
   }
 }
 
